@@ -5,6 +5,7 @@
  */
 
 // ===== 設定定数 =====
+define('APP_VERSION', '1.0.0');
 define('MAX_IMAGE_HEIGHT', 1000);  // 画像の最大高さ
 define('MAX_FONT_SIZE', 100);      // フォントサイズの最大値
 define('TEXT_PADDING', 1);         // テキスト余白
@@ -583,7 +584,10 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                 </svg>
                 プログラムをダウンロード
             </a>
-            <h1>🎮 Twitch Panel Generator</h1>
+            <h1 style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                🎮 Twitch Panel Generator 
+                <span style="font-size: 0.4em; font-weight: normal; color: rgba(255,255,255,0.7); background: rgba(0,0,0,0.2); padding: 2px 8px; border-radius: 10px; vertical-align: middle;">v<?= APP_VERSION ?></span>
+            </h1>
             <p>画像にテキストを重ねてTwitchパネルを作成</p>
             <button class="btn btn-secondary" style="margin-top: 15px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.5);" onclick="showReadme()">📖 使い方を見る (README)</button>
         </div>
@@ -846,7 +850,7 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
     </div>
     
     <div class="site-footer">
-        &copy; 2026 BLUE. Released under the <a href="https://github.com/BLUE000/TwitchPanelGenerator/blob/master/LICENSE" target="_blank">MIT License</a>.
+        &copy; 2026 BLUE. Version <?= APP_VERSION ?> / Released under the <a href="https://github.com/BLUE000/TwitchPanelGenerator/blob/master/LICENSE" target="_blank">MIT License</a>.
     </div>
     
     <!-- README Modal -->
