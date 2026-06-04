@@ -514,8 +514,17 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
         .header { background: linear-gradient(135deg, #9146ff 0%, #6441a5 100%); color: white; padding: 30px; text-align: center; }
         .header h1 { font-size: 2em; margin-bottom: 10px; }
         .content { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; padding: 30px; }
-        .panel { background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #e0e0e0; }
-        .panel h2 { color: #333; margin-bottom: 20px; font-size: 1.3em; border-bottom: 2px solid #9146ff; padding-bottom: 10px; }
+        .panel { background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #e0e0e0; margin-bottom: 20px; }
+        .panel h2 { color: #333; margin-bottom: 20px; font-size: 1.3em; border-bottom: 2px solid #9146ff; padding-bottom: 10px; margin-top: 0; }
+        
+        /* Accordion */
+        details.panel { padding: 15px 20px; transition: all 0.3s; }
+        details.panel summary { list-style: none; cursor: pointer; outline: none; margin: -15px -20px; padding: 15px 20px; border-radius: 8px; user-select: none; }
+        details.panel summary::-webkit-details-marker { display: none; }
+        details.panel summary h2 { display: inline-block; margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+        details.panel summary::after { content: '▼'; float: right; font-size: 16px; color: #666; margin-top: 4px; transition: transform 0.2s; }
+        details[open].panel summary::after { transform: rotate(180deg); }
+        details.panel .panel-content { margin-top: 20px; border-top: 2px solid #ddd; padding-top: 15px; }
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; margin-bottom: 5px; color: #555; font-weight: 600; }
         .form-group input[type="text"], .form-group input[type="number"], .form-group input[type="color"], .form-group select, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
@@ -557,43 +566,38 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
         .site-footer { text-align: center; margin-top: 30px; margin-bottom: 10px; color: rgba(255,255,255,0.9); font-size: 14px; }
         .site-footer a { color: white; text-decoration: underline; font-weight: 600; }
         .site-footer a:hover { color: #e0e0e0; }
+        
+        /* GitHub Link */
+        .github-link { position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.5); padding: 8px 16px; border-radius: 5px; text-decoration: none; font-size: 14px; font-weight: bold; transition: background 0.3s; display: flex; align-items: center; gap: 6px; }
+        .github-link:hover { background: rgba(255,255,255,0.4); color: white; text-decoration: none; }
+        @media (max-width: 768px) { .github-link { position: static; display: inline-flex; margin-bottom: 15px; } }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <div class="header">
+        <div class="header" style="position: relative;">
+            <a href="https://github.com/BLUE000/TwitchPanelGenerator/releases" target="_blank" class="github-link">
+                <svg height="16" aria-hidden="true" viewBox="0 0 16 16" version="1.1" width="16" data-view-component="true" style="fill: white;">
+                    <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"></path>
+                </svg>
+                プログラムをダウンロード
+            </a>
             <h1>🎮 Twitch Panel Generator</h1>
-            <p>画像にテキストを重ねてTwitchパネルを作成（サーバー非保存モード）</p>
+            <p>画像にテキストを重ねてTwitchパネルを作成</p>
             <button class="btn btn-secondary" style="margin-top: 15px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.5);" onclick="showReadme()">📖 使い方を見る (README)</button>
         </div>
         
         <div class="content">
             <!-- 左側：設定パネル -->
             <div>
-                <!-- 画像選択 -->
-                <div class="panel">
-                    <h2>📷 画像選択</h2>
-                    <div class="form-group">
-                        <label>選択中の背景画像</label>
-                        <select id="imageSelect">
-                            <option value="">-- まずは画像を追加してください --</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>背景画像をブラウザに追加</label>
-                        <div class="file-upload">
-                            <input type="file" id="imageUpload" accept="image/*">
-                            <button class="btn btn-secondary" onclick="document.getElementById('imageUpload').click()">ファイルを選択</button>
-                            <span id="imageUploadStatus" style="font-size: 12px; color: #666;"></span>
-                        </div>
-                    </div>
-                </div>
+                
                 
                 <!-- Header 画像設定 -->
-                <div class="panel">
-                    <h2>🖼️ Header 画像設定</h2>
-                    <div class="form-group">
+                <details class="panel" open>
+                    <summary><h2>🖼️ Header 画像設定</h2></summary>
+                    <div class="panel-content">
+<div class="form-group">
                         <div class="checkbox-group">
                             <input type="checkbox" id="headerEnabled">
                             <label for="headerEnabled">ヘッダ画像を有効にする</label>
@@ -660,26 +664,48 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                                 <label for="headerOutlineEnabled">縁取りを有効にする</label>
                             </div>
                         </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>縁取り色</label>
-                                <div class="color-input-group">
-                                    <input type="color" id="headerOutlineColorPicker" value="#000000">
-                                    <input type="text" id="headerOutlineColor" value="#000000" placeholder="#000000">
+                        <div id="headerOutlineSettingsArea" style="display: none;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>縁取り色</label>
+                                    <div class="color-input-group">
+                                        <input type="color" id="headerOutlineColorPicker" value="#000000">
+                                        <input type="text" id="headerOutlineColor" value="#000000" placeholder="#000000">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>縁取りの太さ (px)</label>
+                                    <input type="number" id="headerOutlineWidth" value="2" min="1" max="10">
                                 </div>
                             </div>
-                            <div class="form-group">
-                                <label>縁取りの太さ (px)</label>
-                                <input type="number" id="headerOutlineWidth" value="2" min="1" max="10">
-                            </div>
                         </div>
+                    </div></div>
+                </details>
+                <!-- コンテンツ背景画像選択 -->
+                <details class="panel">
+                    <summary><h2>🏞️ コンテンツ背景画像選択</h2></summary>
+                    <div class="panel-content">
+<div class="form-group">
+                        <label>選択中の背景画像</label>
+                        <select id="imageSelect">
+                            <option value="">-- まずは画像を追加してください --</option>
+                        </select>
                     </div>
-                </div>
-
-                <!-- フォント選択 -->
-                <div class="panel">
-                    <h2>🔤 フォント選択</h2>
                     <div class="form-group">
+                        <label>背景画像をブラウザに追加</label>
+                        <div class="file-upload">
+                            <input type="file" id="imageUpload" accept="image/*">
+                            <button class="btn btn-secondary" onclick="document.getElementById('imageUpload').click()">ファイルを選択</button>
+                            <span id="imageUploadStatus" style="font-size: 12px; color: #666;"></span>
+                        </div>
+                    </div></div>
+                </details>
+                <!-- 本文テキスト設定 -->
+                <details class="panel">
+                    <summary><h2>📝 本文テキスト設定</h2></summary>
+                    <div class="panel-content">
+
+<div class="form-group">
                         <label>本文フォント</label>
                         <select id="fontSelect">
                             <option value="Arial">Arial</option>
@@ -696,13 +722,9 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                             <button class="btn btn-secondary" onclick="document.getElementById('fontUpload').click()">ファイルを選択</button>
                             <span id="fontUploadStatus" style="font-size: 12px; color: #666;"></span>
                         </div>
-                    </div>
-                </div>
-                
-                <!-- テキスト設定 -->
-                <div class="panel">
-                    <h2>✏️ テキスト設定</h2>
-                    <div class="form-group">
+                    
+
+<div class="form-group">
                         <label>テキスト</label>
                         <textarea id="textContent" placeholder="ここにテキストを入力..."></textarea>
                     </div>
@@ -749,35 +771,35 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                             <input type="color" id="textColorPicker" value="#ffffff">
                             <input type="text" id="textColor" value="#ffffff" placeholder="#000000">
                         </div>
-                    </div>
-                </div>
-                
-                <!-- 縁取り設定 -->
-                <div class="panel">
-                    <h2>🎨 縁取り設定</h2>
-                    <div class="form-group">
+                    
+
+<div class="form-group">
                         <div class="checkbox-group">
                             <input type="checkbox" id="outlineEnabled">
                             <label for="outlineEnabled">縁取りを有効にする</label>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>縁取り色</label>
-                        <div class="color-input-group">
-                            <input type="color" id="outlineColorPicker" value="#000000">
-                            <input type="text" id="outlineColor" value="#000000" placeholder="#000000">
+                    <div id="outlineSettingsArea" style="display: none;">
+                        <div class="form-group">
+                            <label>縁取り色</label>
+                            <div class="color-input-group">
+                                <input type="color" id="outlineColorPicker" value="#000000">
+                                <input type="text" id="outlineColor" value="#000000" placeholder="#000000">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>縁取りの太さ (px)</label>
+                            <input type="number" id="outlineWidth" value="2" min="1" max="10">
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>縁取りの太さ (px)</label>
-                        <input type="number" id="outlineWidth" value="2" min="1" max="10">
                     </div>
-                </div>
+                </details>
                 
                 <!-- 出力設定 -->
-                <div class="panel">
-                    <h2>💾 出力設定</h2>
-                    <div class="form-group">
+                <details class="panel">
+                    <summary><h2>💾 出力設定</h2></summary>
+                    <div class="panel-content">
+<div class="form-group">
                         <label>高さ設定</label>
                         <select id="heightMode">
                             <option value="auto">自動（テキストに合わせる）</option>
@@ -792,13 +814,25 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                         <label>保存ファイル名</label>
                         <input type="text" id="filename" placeholder="panel_output" value="panel_output">
                     </div>
-                </div>
+                    
+                    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+                    
+                    <div class="form-group">
+                        <label>現在の設定をバックアップ・復元</label>
+                        <div style="font-size: 12px; color: #666; margin-bottom: 10px;">※文字や色の設定を保存できます。画像は保存されないため、復元時に再度選んでください。</div>
+                        <div class="button-group" style="margin-top: 0;">
+                            <button class="btn btn-secondary" onclick="exportSettingsCSV()">📥 設定をCSV保存</button>
+                            <button class="btn btn-secondary" onclick="document.getElementById('csvFileInput').click()">📂 設定を読込</button>
+                            <input type="file" id="csvFileInput" accept=".csv" style="display: none;" onchange="importSettingsCSV(this)">
+                        </div>
+                    </div></div>
+                </details>
             </div>
             
             <!-- 右側：プレビュー -->
             <div>
                 <div class="panel" style="position: sticky; top: 20px;">
-                    <h2>👁️ プレビュー</h2>
+                    <h2>プレビュー</h2>
                     <div class="preview-container" id="previewContainer">
                         <div class="preview-placeholder">プレビューがここに表示されます</div>
                     </div>
@@ -865,6 +899,14 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
         // ヘッダ設定トグル
         document.getElementById('headerEnabled').addEventListener('change', function() {
             document.getElementById('headerSettingsArea').style.display = this.checked ? 'block' : 'none';
+        });
+        
+        // 縁取り設定トグル
+        document.getElementById('outlineEnabled').addEventListener('change', function() {
+            document.getElementById('outlineSettingsArea').style.display = this.checked ? 'block' : 'none';
+        });
+        document.getElementById('headerOutlineEnabled').addEventListener('change', function() {
+            document.getElementById('headerOutlineSettingsArea').style.display = this.checked ? 'block' : 'none';
         });
 
         // ヘッダカラー同期
