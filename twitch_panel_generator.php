@@ -469,11 +469,23 @@ function getFontPath($font, $customFontFile = '') {
                 'http' => [
                     'timeout' => 15,
                     'follow_location' => true,
-                    'user_agent' => 'TwitchPanelGenerator/1.0'
+                    'user_agent' => 'TwitchPanelGenerator/1.0',
+                    'ignore_errors' => true
                 ]
             ]);
             $fontData = @file_get_contents($url, false, $ctx);
-            if ($fontData !== false) {
+            
+            $status = 404;
+            if (isset($http_response_header) && is_array($http_response_header)) {
+                foreach ($http_response_header as $header) {
+                    if (preg_match('#^HTTP/[0-9\.]+\s+([0-9]+)#', $header, $match)) {
+                        $status = intval($match[1]);
+                        break;
+                    }
+                }
+            }
+            
+            if ($fontData !== false && $status >= 200 && $status < 300 && strlen($fontData) > 10000) {
                 if (@file_put_contents($cachedFont, $fontData) !== false) {
                     return $cachedFont;
                 }
@@ -481,7 +493,15 @@ function getFontPath($font, $customFontFile = '') {
         }
     }
     
-    // 4. 完全にフォントが利用できない場合は、定義上の最初のパスを返却
+    // 4. 完全にフォントが利用できない場合は、確実に存在する可能性が高いものを返す
+    $noto = DIR_FONTS . 'NotoSansJP-Regular.otf';
+    if (file_exists($noto)) {
+        return $noto;
+    }
+    
+    if (isset($defaultFonts['Meiryo'])) {
+        return $defaultFonts['Meiryo']['paths'][0];
+    }
     if (isset($defaultFonts['Arial'])) {
         return $defaultFonts['Arial']['paths'][0];
     }
