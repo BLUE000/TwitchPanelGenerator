@@ -497,6 +497,9 @@ function hexToRgb($hex) {
     ];
 }
 
+$readmePath = __DIR__ . '/README.md';
+$readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'README.md が見つかりません。';
+
 ?>
 <!DOCTYPE html>
 <html lang="ja">
@@ -538,13 +541,26 @@ function hexToRgb($hex) {
         .button-group { display: flex; gap: 10px; margin-top: 20px; }
         .button-group .btn { flex: 1; }
         @media (max-width: 768px) { .content { grid-template-columns: 1fr; } }
+        
+        /* Modal Styles */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 30px; border-radius: 10px; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto; position: relative; text-align: left; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .modal-close { position: absolute; top: 15px; right: 20px; font-size: 28px; cursor: pointer; color: #555; line-height: 1; }
+        .markdown-body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; line-height: 1.6; color: #333; }
+        .markdown-body h1, .markdown-body h2 { border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; margin-bottom: 16px; margin-top: 24px; color: #111; }
+        .markdown-body h1 { font-size: 2em; margin-top: 0; }
+        .markdown-body p, .markdown-body ul, .markdown-body ol { margin-bottom: 16px; font-size: 15px; }
+        .markdown-body ul { padding-left: 2em; }
+        .markdown-body strong { font-weight: 600; }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>🎮 Twitch Panel Generator</h1>
             <p>画像にテキストを重ねてTwitchパネルを作成（サーバー非保存モード）</p>
+            <button class="btn btn-secondary" style="margin-top: 15px; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.5);" onclick="showReadme()">📖 使い方を見る (README)</button>
         </div>
         
         <div class="content">
@@ -790,7 +806,29 @@ function hexToRgb($hex) {
         </div>
     </div>
     
+    <!-- README Modal -->
+    <div class="modal-overlay" id="readmeModal" onclick="closeReadme(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <span class="modal-close" onclick="closeReadme()">&times;</span>
+            <div id="readmeContent" class="markdown-body"></div>
+        </div>
+    </div>
+    
     <script>
+        // README表示ロジック
+        const rawReadme = <?= json_encode($readmeContent) ?>;
+        
+        function showReadme() {
+            document.getElementById('readmeModal').style.display = 'flex';
+            document.getElementById('readmeContent').innerHTML = marked.parse(rawReadme);
+        }
+        
+        function closeReadme(e) {
+            if (!e || e.target.id === 'readmeModal') {
+                document.getElementById('readmeModal').style.display = 'none';
+            }
+        }
+
         // カラーピッカーとテキスト入力の同期
         document.getElementById('textColorPicker').addEventListener('input', function() {
             document.getElementById('textColor').value = this.value;
