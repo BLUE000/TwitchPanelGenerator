@@ -832,7 +832,18 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                     
 
 <div class="form-group">
-                        <label>テキスト</label>
+                        <label style="display: flex; justify-content: space-between; align-items: flex-end;">
+                            テキスト
+                            <span style="font-size: 12px; color: #4CAF50; cursor: pointer;" onclick="document.getElementById('markdownHelp').style.display = document.getElementById('markdownHelp').style.display === 'none' ? 'block' : 'none'">❓マークダウンの書き方</span>
+                        </label>
+                        <div id="markdownHelp" style="display: none; font-size: 12px; color: #ddd; margin-bottom: 8px; background: rgba(0,0,0,0.3); border-left: 3px solid #4CAF50; padding: 8px; border-radius: 4px; line-height: 1.5;">
+                            行の先頭に特定の記号をつけることで、デザインを自動で変更できます。<br>
+                            <code># テキスト</code> ： <b>見出し1</b>（文字サイズ1.5倍 ＋ 下余白）<br>
+                            <code>## テキスト</code> ： <b>見出し2</b>（文字サイズ1.25倍）<br>
+                            <code>- テキスト</code> ： <b>リスト</b>（先頭が「・」になり、綺麗に字下げ）<br>
+                            <code>> テキスト</code> ： <b>引用</b>（左側にアクセントの縦線 ＋ 全体字下げ）<br>
+                            <code>---</code> ： <b>横線</b>（幅いっぱいに区切り線を引く）
+                        </div>
                         <textarea id="textContent" placeholder="ここにテキストを入力..."></textarea>
                     </div>
                     <div class="form-row">
