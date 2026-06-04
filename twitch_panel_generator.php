@@ -552,6 +552,11 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
         .markdown-body p, .markdown-body ul, .markdown-body ol { margin-bottom: 16px; font-size: 15px; }
         .markdown-body ul { padding-left: 2em; }
         .markdown-body strong { font-weight: 600; }
+        
+        /* Footer Styles */
+        .site-footer { text-align: center; margin-top: 30px; margin-bottom: 10px; color: rgba(255,255,255,0.9); font-size: 14px; }
+        .site-footer a { color: white; text-decoration: underline; font-weight: 600; }
+        .site-footer a:hover { color: #e0e0e0; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -804,6 +809,10 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                 </div>
             </div>
         </div>
+    </div>
+    
+    <div class="site-footer">
+        &copy; 2026 BLUE. Released under the <a href="https://github.com/BLUE000/TwitchPanelGenerator/blob/master/LICENSE" target="_blank">MIT License</a>.
     </div>
     
     <!-- README Modal -->
