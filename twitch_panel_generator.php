@@ -233,58 +233,116 @@ function generateImage($params, $files) {
     imagecopyresampled($resizedImage, $sourceImage, 0, 0, 0, 0, $newWidth, $newHeight, $originalWidth, $originalHeight);
     imagedestroy($sourceImage);
     
-    // テキスト処理
+    // テキスト処理 (Markdown対応)
     $lines = explode("\n", $text);
     $paragraphs = [];
     
-    foreach ($lines as $line) {
-        $words = mb_str_split($line, 1);
-        $currentLine = '';
+    foreach ($lines as $rawLine) {
+        $type = 'normal';
+        $pFontSize = $fontSize;
+        $indent = 0;
+        $isHr = false;
+        
+        $trimLine = rtrim($rawLine);
+        
+        if (preg_match('/^#\s+(.*)$/u', $trimLine, $m)) {
+            $type = 'h1';
+            $pFontSize = intval($fontSize * 1.5);
+            $trimLine = $m[1];
+        } elseif (preg_match('/^##\s+(.*)$/u', $trimLine, $m)) {
+            $type = 'h2';
+            $pFontSize = intval($fontSize * 1.25);
+            $trimLine = $m[1];
+        } elseif (preg_match('/^[-*]\s+(.*)$/u', $trimLine, $m)) {
+            $type = 'list';
+            $trimLine = '・' . $m[1];
+            $indent = intval($pFontSize * 1.0);
+        } elseif (preg_match('/^>\s+(.*)$/u', $trimLine, $m)) {
+            $type = 'quote';
+            $trimLine = $m[1];
+            $indent = intval($pFontSize * 1.5);
+        } elseif (trim($trimLine) === '---') {
+            $type = 'hr';
+            $isHr = true;
+            $trimLine = '';
+        }
+
         $wrapped = [];
-        
-        foreach ($words as $char) {
-            $testLine = $currentLine . $char;
-            $bbox = @imagettfbbox($fontSize, 0, $fontPath, $testLine);
-            if ($bbox === false) {
-                return [
-                    'success' => false,
-                    'error' => 'フォントの読み込みまたはテキストサイズ計算に失敗しました。フォントファイルが破損している可能性があります。'
-                ];
-            }
-            $textWidth = $bbox[2] - $bbox[0];
+        if ($isHr) {
+            $wrapped[] = ''; // ダミー行
+        } else {
+            $words = mb_str_split($trimLine, 1);
+            $currentLine = '';
+            $availableWidth = TARGET_WIDTH - TEXT_PADDING * 2;
             
-            if ($textWidth > (TARGET_WIDTH - TEXT_PADDING * 2)) {
-                if ($currentLine !== '') {
-                    $wrapped[] = $currentLine;
+            foreach ($words as $char) {
+                $testLine = $currentLine . $char;
+                $bbox = @imagettfbbox($pFontSize, 0, $fontPath, $testLine);
+                if ($bbox === false) {
+                    return [
+                        'success' => false,
+                        'error' => 'フォントの読み込みまたはテキストサイズ計算に失敗しました。フォントファイルが破損している可能性があります。'
+                    ];
                 }
-                $currentLine = $char;
-            } else {
-                $currentLine = $testLine;
+                $textWidth = $bbox[2] - $bbox[0];
+                
+                $currentIndent = ($type === 'quote') ? $indent : ((count($wrapped) > 0 && $type === 'list') ? $indent : 0);
+                $currentAvailable = $availableWidth - $currentIndent;
+                
+                if ($textWidth > $currentAvailable) {
+                    if ($currentLine !== '') {
+                        $wrapped[] = $currentLine;
+                    }
+                    $currentLine = $char;
+                } else {
+                    $currentLine = $testLine;
+                }
+            }
+            if ($currentLine !== '') {
+                $wrapped[] = $currentLine;
             }
         }
         
-        if ($currentLine !== '') {
-            $wrapped[] = $currentLine;
-        }
-        
-        $paragraphs[] = $wrapped;
+        $paragraphs[] = [
+            'type' => $type,
+            'lines' => $wrapped,
+            'font_size' => $pFontSize,
+            'indent' => $indent
+        ];
     }
     
     // 必要な高さを計算
-    $currentY = $textY + $fontSize;
-    foreach ($paragraphs as $pIndex => $wrapped) {
+    $currentY = $textY;
+    foreach ($paragraphs as $pIndex => $pData) {
+        $type = $pData['type'];
+        $pFontSize = $pData['font_size'];
+        $wrapped = $pData['lines'];
+        
+        $currentY += $pFontSize; // 行の上部余白
+        
+        if ($type === 'hr') {
+            $currentY += $pFontSize;
+            continue;
+        }
+        
+        $scale = $pFontSize / $fontSize;
+        $pLineHeight = intval($lineHeight * $scale);
+        $pWrapLineHeight = intval($wrapLineHeight * $scale);
+        
         foreach ($wrapped as $lIndex => $line) {
-            if ($pIndex === count($paragraphs) - 1 && $lIndex === count($wrapped) - 1) {
-                break;
-            }
             if ($lIndex < count($wrapped) - 1) {
-                $currentY += $wrapLineHeight;
+                $currentY += $pWrapLineHeight;
             } else {
-                $currentY += $lineHeight;
+                $currentY += $pLineHeight;
             }
         }
+        
+        if ($type === 'h1') {
+            $currentY += intval($pFontSize * 0.5);
+        }
     }
-    $requiredHeight = $currentY + ($fontSize * 0.5) + TEXT_PADDING;
+    
+    $requiredHeight = $currentY + TEXT_PADDING;
     
     if ($heightMode === 'manual' && $manualHeight > 0) {
         $bodyHeight = min($manualHeight, MAX_IMAGE_HEIGHT);
@@ -373,29 +431,57 @@ function generateImage($params, $files) {
         $outlineColorRgb = hexToRgb($outlineColor);
         $outlineColorObj = imagecolorallocate($finalImage, $outlineColorRgb[0], $outlineColorRgb[1], $outlineColorRgb[2]);
         
-        $currentY = $headerHeight + $textY + $fontSize;
+        // 引用用の縦線カラー（少し透明にするか、縁取り色に合わせる）
+        $quoteLineColor = imagecolorallocatealpha($finalImage, $outlineColorRgb[0], $outlineColorRgb[1], $outlineColorRgb[2], 50);
         
-        foreach ($paragraphs as $pIndex => $wrapped) {
-            foreach ($wrapped as $lIndex => $line) {
-                $bbox = @imagettfbbox($fontSize, 0, $fontPath, $line);
-                if ($bbox === false) {
-                    return [
-                        'success' => false,
-                        'error' => 'テキストサイズ計算に失敗しました。'
-                    ];
+        $currentY = $headerHeight + $textY;
+        
+        foreach ($paragraphs as $pIndex => $pData) {
+            $type = $pData['type'];
+            $pFontSize = $pData['font_size'];
+            $indent = $pData['indent'];
+            $wrapped = $pData['lines'];
+            
+            $currentY += $pFontSize;
+            
+            if ($type === 'hr') {
+                $hrY = $currentY - intval($pFontSize / 2);
+                imagefilledrectangle($finalImage, TEXT_PADDING + 10, $hrY, TARGET_WIDTH - TEXT_PADDING - 10, $hrY + 2, $color);
+                $currentY += $pFontSize;
+                continue;
+            }
+            
+            $scale = $pFontSize / $fontSize;
+            $pLineHeight = intval($lineHeight * $scale);
+            $pWrapLineHeight = intval($wrapLineHeight * $scale);
+            
+            // 引用の縦線描画
+            if ($type === 'quote') {
+                $totalH = 0;
+                foreach ($wrapped as $lIndex => $line) {
+                    $totalH += ($lIndex < count($wrapped) - 1) ? $pWrapLineHeight : 0;
                 }
-                $textWidth = $bbox[2] - $bbox[0];
+                $qStartY = $currentY - $pFontSize;
+                $qEndY = $currentY + $totalH + intval($pFontSize * 0.3);
+                imagefilledrectangle($finalImage, $textX + TEXT_PADDING, $qStartY, $textX + TEXT_PADDING + 4, $qEndY, $quoteLineColor);
+            }
+            
+            foreach ($wrapped as $lIndex => $line) {
+                $bbox = @imagettfbbox($pFontSize, 0, $fontPath, $line);
+                $textWidth = $bbox ? ($bbox[2] - $bbox[0]) : 0;
+                
+                $currentIndent = ($type === 'quote') ? $indent : (($lIndex > 0 && $type === 'list') ? $indent : 0);
                 
                 // 配置計算
                 switch ($textAlign) {
                     case 'center':
-                        $drawX = ($newWidth - $textWidth) / 2;
+                        $drawX = ($newWidth - $textWidth) / 2 + ($currentIndent / 2);
                         break;
                     case 'right':
                         $drawX = $newWidth - $textWidth - TEXT_PADDING;
                         break;
                     default: // left
-                        $drawX = $textX + TEXT_PADDING;
+                        $drawX = $textX + TEXT_PADDING + $currentIndent;
                         break;
                 }
                 
@@ -404,27 +490,24 @@ function generateImage($params, $files) {
                     for ($ox = -$outlineWidth; $ox <= $outlineWidth; $ox++) {
                         for ($oy = -$outlineWidth; $oy <= $outlineWidth; $oy++) {
                             if ($ox != 0 || $oy != 0) {
-                                @imagettftext($finalImage, $fontSize, 0, $drawX + $ox, $currentY + $oy, $outlineColorObj, $fontPath, $line);
+                                @imagettftext($finalImage, $pFontSize, 0, $drawX + $ox, $currentY + $oy, $outlineColorObj, $fontPath, $line);
                             }
                         }
                     }
                 }
                 
                 // テキスト描画
-                $drawResult = @imagettftext($finalImage, $fontSize, 0, $drawX, $currentY, $color, $fontPath, $line);
-                if ($drawResult === false) {
-                    return [
-                        'success' => false,
-                        'error' => 'テキストの描画（imagettftext）に失敗しました。GDライブラリやFreeTypeの設定、またはフォントファイルを確認してください。'
-                    ];
-                }
+                @imagettftext($finalImage, $pFontSize, 0, $drawX, $currentY, $color, $fontPath, $line);
                 
-                // 次の行への移動
                 if ($lIndex < count($wrapped) - 1) {
-                    $currentY += $wrapLineHeight;
+                    $currentY += $pWrapLineHeight;
                 } else {
-                    $currentY += $lineHeight;
+                    $currentY += $pLineHeight;
                 }
+            }
+            
+            if ($type === 'h1') {
+                $currentY += intval($pFontSize * 0.5);
             }
         }
     }
