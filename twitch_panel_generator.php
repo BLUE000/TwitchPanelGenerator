@@ -994,7 +994,11 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
             ];
             
             fields.forEach(f => {
-                const elId = f.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+                let elId = f.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+                // 特殊なIDマッピング
+                if (f === 'text') elId = 'textContent';
+                if (f === 'header_text') elId = 'headerTextContent';
+                
                 const el = document.getElementById(elId);
                 if (el) formData.append(f, el.value);
             });
