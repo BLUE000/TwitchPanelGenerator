@@ -5,7 +5,7 @@
  */
 
 // ===== 設定定数 =====
-define('APP_VERSION', '1.0.0');
+define('APP_VERSION', '1.0.1');
 define('MAX_IMAGE_HEIGHT', 1000);  // 画像の最大高さ
 define('MAX_FONT_SIZE', 100);      // フォントサイズの最大値
 define('TEXT_PADDING', 1);         // テキスト余白
