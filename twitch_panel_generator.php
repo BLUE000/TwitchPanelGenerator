@@ -1260,7 +1260,8 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                     let val = el.type === 'checkbox' ? el.checked : el.value;
                     let valStr = String(val);
                     // エクセルの数式誤認（-, +, =, @ から始まる文字列）を防ぐためにシングルクォートを付与
-                    if (/^[=\+\-@]/.test(valStr)) {
+                    // 故意に入力されたシングルクォートも保護するためにエスケープ対象に含める
+                    if (/^[=\+\-@']/.test(valStr)) {
                         valStr = "'" + valStr;
                     }
                     valStr = valStr.replace(/"/g, '""');
@@ -1326,7 +1327,7 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                     
                     if (key.trim() !== '') {
                         // エクセル用のエスケープ（先頭のシングルクォート）を解除
-                        if (/^'[=\+\-@]/.test(val)) {
+                        if (/^'[=\+\-@']/.test(val)) {
                             val = val.substring(1);
                         }
                         
