@@ -1252,6 +1252,92 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
             }
         }
 
+        function exportSettingsCSV() {
+            let csvContent = "Key,Value\n";
+            SAVE_KEYS.forEach(key => {
+                const el = document.getElementById(key);
+                if (el) {
+                    let val = el.type === 'checkbox' ? el.checked : el.value;
+                    val = String(val).replace(/"/g, '""');
+                    csvContent += `${key},"${val}"\n`;
+                }
+            });
+            const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'twitch_panel_settings.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function importSettingsCSV(input) {
+            if (!input.files || input.files.length === 0) return;
+            const file = input.files[0];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                let pos = 0;
+                let isHeader = true;
+                
+                while (pos < text.length) {
+                    let key = "";
+                    while (pos < text.length && text[pos] !== ',') {
+                        key += text[pos];
+                        pos++;
+                    }
+                    pos++;
+                    
+                    let val = "";
+                    if (pos < text.length && text[pos] === '"') {
+                        pos++;
+                        while (pos < text.length) {
+                            if (text[pos] === '"') {
+                                if (pos + 1 < text.length && text[pos+1] === '"') {
+                                    val += '"';
+                                    pos += 2;
+                                } else {
+                                    pos++;
+                                    break;
+                                }
+                            } else {
+                                val += text[pos];
+                                pos++;
+                            }
+                        }
+                    }
+                    
+                    while (pos < text.length && text[pos] !== '\n') {
+                        pos++;
+                    }
+                    pos++;
+                    
+                    if (isHeader) {
+                        isHeader = false;
+                        continue;
+                    }
+                    
+                    if (key.trim() !== '') {
+                        const el = document.getElementById(key.trim());
+                        if (el) {
+                            if (el.type === 'checkbox') {
+                                el.checked = (val === 'true');
+                            } else {
+                                el.value = val;
+                            }
+                            el.dispatchEvent(new Event('change'));
+                            el.dispatchEvent(new Event('input'));
+                        }
+                    }
+                }
+                alert('設定を読み込みました！');
+                input.value = '';
+            };
+            reader.readAsText(file);
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
             loadFormData();
             SAVE_KEYS.forEach(key => {
