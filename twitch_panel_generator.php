@@ -1258,8 +1258,13 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                 const el = document.getElementById(key);
                 if (el) {
                     let val = el.type === 'checkbox' ? el.checked : el.value;
-                    val = String(val).replace(/"/g, '""');
-                    csvContent += `${key},"${val}"\n`;
+                    let valStr = String(val);
+                    // エクセルの数式誤認（-, +, =, @ から始まる文字列）を防ぐためにシングルクォートを付与
+                    if (/^[=\+\-@]/.test(valStr)) {
+                        valStr = "'" + valStr;
+                    }
+                    valStr = valStr.replace(/"/g, '""');
+                    csvContent += `${key},"${valStr}"\n`;
                 }
             });
             const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1320,6 +1325,11 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                     }
                     
                     if (key.trim() !== '') {
+                        // エクセル用のエスケープ（先頭のシングルクォート）を解除
+                        if (/^'[=\+\-@]/.test(val)) {
+                            val = val.substring(1);
+                        }
+                        
                         const el = document.getElementById(key.trim());
                         if (el) {
                             if (el.type === 'checkbox') {
