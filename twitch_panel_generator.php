@@ -1422,6 +1422,16 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
             reader.readAsText(file);
         }
         
+        let debounceTimer = null;
+        function debouncedUpdatePreview(delay = 150) {
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+            }
+            debounceTimer = setTimeout(() => {
+                updatePreview();
+            }, delay);
+        }
+        
         // ===== プレビュー画面上での本文テキストドラッグ移動機能 =====
         let isDragging = false;
         let dragStartTextX = 0;
@@ -1540,7 +1550,7 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                     });
                     el.addEventListener('input', () => {
                         saveFormData();
-                        updatePreview();
+                        debouncedUpdatePreview(150);
                     });
                 }
             });
