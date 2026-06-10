@@ -5,605 +5,14 @@
  */
 
 // ===== 設定定数 =====
-define('APP_VERSION', '1.0.1');
+define('APP_VERSION', '1.2.0');
 define('MAX_IMAGE_HEIGHT', 1000);  // 画像の最大高さ
 define('MAX_FONT_SIZE', 100);      // フォントサイズの最大値
 define('TEXT_PADDING', 1);         // テキスト余白
 define('TARGET_WIDTH', 320);       // Twitchパネルの横幅
 
-// ===== ディレクトリ設定 =====
-define('DIR_FONTS', __DIR__ . '/uploads/fonts/');
-
-// ディレクトリ作成
-if (!is_dir(DIR_FONTS)) {
-    mkdir(DIR_FONTS, 0777, true);
-}
-
-// ===== 標準フォント定義 =====
-$defaultFonts = [
-    'Arial' => [
-        'paths' => [
-            'C:/Windows/Fonts/arial.ttf',
-            '/usr/share/fonts/truetype/msttcorefonts/Arial.ttf',
-            '/usr/share/fonts/TTF/Arial.ttf',
-            '/Library/Fonts/Arial.ttf',
-            '/Library/Fonts/Microsoft/Arial.ttf',
-        ],
-        'download_url' => 'https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto-Regular.ttf',
-        'filename' => 'Roboto-Regular.ttf'
-    ],
-    'Times New Roman' => [
-        'paths' => [
-            'C:/Windows/Fonts/times.ttf',
-            '/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf',
-            '/Library/Fonts/Times New Roman.ttf',
-        ],
-        'download_url' => 'https://raw.githubusercontent.com/google/fonts/main/ofl/playfairdisplay/PlayfairDisplay-Regular.ttf',
-        'filename' => 'PlayfairDisplay-Regular.ttf'
-    ],
-    'Courier New' => [
-        'paths' => [
-            'C:/Windows/Fonts/cour.ttf',
-            '/usr/share/fonts/truetype/msttcorefonts/Courier_New.ttf',
-            '/Library/Fonts/Courier New.ttf',
-        ],
-        'download_url' => 'https://raw.githubusercontent.com/google/fonts/main/ofl/courierprime/CourierPrime-Regular.ttf',
-        'filename' => 'CourierPrime-Regular.ttf'
-    ],
-    'Verdana' => [
-        'paths' => [
-            'C:/Windows/Fonts/verdana.ttf',
-            '/Library/Fonts/Verdana.ttf',
-        ],
-        'download_url' => 'https://raw.githubusercontent.com/google/fonts/main/ofl/inter/static/Inter-Regular.ttf',
-        'filename' => 'Inter-Regular.ttf'
-    ],
-    'Meiryo' => [
-        'paths' => [
-            'C:/Windows/Fonts/meiryo.ttc',
-            '/usr/share/fonts/truetype/fonts-japanese-gothic.ttf',
-            '/usr/share/fonts/ja/TrueType/kochi-gothic-subst.ttf',
-            '/Library/Fonts/Supplemental/Meiryo.ttc',
-        ],
-        'download_url' => 'https://raw.githubusercontent.com/googlefonts/noto-cjk/main/Sans/SubsetOTF/JP/NotoSansJP-Regular.otf',
-        'filename' => 'NotoSansJP-Regular.otf'
-    ],
-];
-
-// ===== Ajax処理 =====
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    
-    // プレビュー生成
-    if (isset($_POST['action']) && $_POST['action'] === 'preview') {
-        $result = generateImage($_POST, $_FILES);
-        if ($result['success']) {
-            echo json_encode(['success' => true, 'image' => base64_encode($result['data'])]);
-        } else {
-            echo json_encode(['success' => false, 'error' => $result['error']]);
-        }
-        exit;
-    }
-    
-    // 画像保存
-    if (isset($_POST['action']) && $_POST['action'] === 'save') {
-        $result = generateImage($_POST, $_FILES);
-        if ($result['success']) {
-            $filename = !empty($_POST['filename']) ? $_POST['filename'] : 'panel_' . date('YmdHis');
-            $filename = preg_replace('/[^a-zA-Z0-9_-]/', '', $filename) . '.png';
-            
-            header('Content-Type: application/octet-stream');
-            header('Content-Disposition: attachment; filename="' . $filename . '"');
-            header('Content-Length: ' . strlen($result['data']));
-            echo $result['data'];
-            exit;
-        } else {
-            header('Content-Type: application/json');
-            echo json_encode(['success' => false, 'error' => $result['error']]);
-            exit;
-        }
-    }
-}
-
-// ===== 画像生成関数 =====
-function generateImage($params, $files) {
-    // 画像ファイルの取得
-    $imageFile = '';
-    if (isset($files['bg_image']) && $files['bg_image']['error'] === UPLOAD_ERR_OK) {
-        $imageFile = $files['bg_image']['tmp_name'];
-    }
-    
-    $text = $params['text'] ?? '';
-    
-    // 本文フォントファイルの取得
-    $customFontFile = '';
-    if (isset($files['custom_font']) && $files['custom_font']['error'] === UPLOAD_ERR_OK) {
-        $customFontFile = $files['custom_font']['tmp_name'];
-    }
-    $fontPath = getFontPath($params['font'] ?? 'Arial', $customFontFile);
-    
-    $fontSize = intval($params['font_size'] ?? 20);
-    $lineHeight = intval($params['line_height'] ?? ($fontSize * 1.4));
-    $wrapLineHeight = intval($params['wrap_line_height'] ?? ($fontSize * 1.2));
-    $textX = intval($params['text_x'] ?? 0);
-    $textY = intval($params['text_y'] ?? 0);
-    $textColor = $params['text_color'] ?? '#FFFFFF';
-    $textAlign = $params['text_align'] ?? 'left';
-    $outlineEnabled = isset($params['outline_enabled']) && $params['outline_enabled'] === 'true';
-    $outlineColor = $params['outline_color'] ?? '#000000';
-    $outlineWidth = intval($params['outline_width'] ?? 2);
-    $heightMode = $params['height_mode'] ?? 'auto';
-    $manualHeight = intval($params['manual_height'] ?? 0);
-    
-    // ヘッダ設定パラメータ
-    $headerEnabled = isset($params['header_enabled']) && $params['header_enabled'] === 'true';
-    $headerImageFile = '';
-    if (isset($files['header_image']) && $files['header_image']['error'] === UPLOAD_ERR_OK) {
-        $headerImageFile = $files['header_image']['tmp_name'];
-    }
-    $headerText = $params['header_text'] ?? '';
-    $headerFontParam = $params['header_font'] ?? 'Arial';
-    
-    $headerCustomFontFile = '';
-    if (isset($files['header_custom_font']) && $files['header_custom_font']['error'] === UPLOAD_ERR_OK) {
-        $headerCustomFontFile = $files['header_custom_font']['tmp_name'];
-    }
-    
-    $headerFontSize = intval($params['header_font_size'] ?? 24);
-    $headerTextAlign = $params['header_text_align'] ?? 'center';
-    $headerTextColor = $params['header_text_color'] ?? '#FFFFFF';
-    $headerOutlineEnabled = isset($params['header_outline_enabled']) && $params['header_outline_enabled'] === 'true';
-    $headerOutlineColor = $params['header_outline_color'] ?? '#000000';
-    $headerOutlineWidth = intval($params['header_outline_width'] ?? 2);
-    
-    // 画像読み込み
-    if (empty($imageFile) || !file_exists($imageFile)) {
-        return ['success' => false, 'error' => '背景画像が選択されていません。'];
-    }
-
-    // ヘッダ画像の読み込みとリサイズ
-    $headerHeight = 0;
-    $resizedHeaderImage = null;
-    
-    if ($headerEnabled && !empty($headerImageFile) && file_exists($headerImageFile)) {
-        $headerInfo = getimagesize($headerImageFile);
-        $headerMime = $headerInfo['mime'];
-        switch ($headerMime) {
-            case 'image/jpeg':
-                $headerSrc = @imagecreatefromjpeg($headerImageFile);
-                break;
-            case 'image/png':
-                $headerSrc = @imagecreatefrompng($headerImageFile);
-                break;
-            case 'image/gif':
-                $headerSrc = @imagecreatefromgif($headerImageFile);
-                break;
-            default:
-                $headerSrc = null;
-                break;
-        }
-        if ($headerSrc) {
-            $hOrigWidth = imagesx($headerSrc);
-            $hOrigHeight = imagesy($headerSrc);
-            $headerHeight = intval($hOrigHeight * (TARGET_WIDTH / $hOrigWidth));
-            
-            $resizedHeaderImage = imagecreatetruecolor(TARGET_WIDTH, $headerHeight);
-            imagealphablending($resizedHeaderImage, false);
-            imagesavealpha($resizedHeaderImage, true);
-            imagecopyresampled($resizedHeaderImage, $headerSrc, 0, 0, 0, 0, TARGET_WIDTH, $headerHeight, $hOrigWidth, $hOrigHeight);
-            imagedestroy($headerSrc);
-        }
-    }
-
-    // テキストがある場合のみフォントの存在チェック
-    if (!empty($text)) {
-        if (empty($fontPath) || !file_exists($fontPath)) {
-            return [
-                'success' => false,
-                'error' => 'フォントファイルが見つかりません。フォントファイル（.ttf / .otf / .ttc）を追加して選択してください。'
-            ];
-        }
-    }
-    
-    $imageInfo = getimagesize($imageFile);
-    $mimeType = $imageInfo['mime'];
-    
-    switch ($mimeType) {
-        case 'image/jpeg':
-            $sourceImage = imagecreatefromjpeg($imageFile);
-            break;
-        case 'image/png':
-            $sourceImage = imagecreatefrompng($imageFile);
-            break;
-        case 'image/gif':
-            $sourceImage = imagecreatefromgif($imageFile);
-            break;
-        default:
-            return ['success' => false, 'error' => 'Unsupported image type'];
-    }
-    
-    // 320pxにリサイズ
-    $originalWidth = imagesx($sourceImage);
-    $originalHeight = imagesy($sourceImage);
-    $newWidth = TARGET_WIDTH;
-    $newHeight = intval($originalHeight * ($newWidth / $originalWidth));
-    
-    $resizedImage = imagecreatetruecolor($newWidth, $newHeight);
-    imagealphablending($resizedImage, false);
-    imagesavealpha($resizedImage, true);
-    imagecopyresampled($resizedImage, $sourceImage, 0, 0, 0, 0, $newWidth, $newHeight, $originalWidth, $originalHeight);
-    imagedestroy($sourceImage);
-    
-    // テキスト処理 (Markdown対応)
-    $lines = explode("\n", $text);
-    $paragraphs = [];
-    
-    foreach ($lines as $rawLine) {
-        $type = 'normal';
-        $pFontSize = $fontSize;
-        $indent = 0;
-        $isHr = false;
-        
-        $trimLine = rtrim($rawLine);
-        
-        if (preg_match('/^#\s+(.*)$/u', $trimLine, $m)) {
-            $type = 'h1';
-            $pFontSize = intval($fontSize * 1.5);
-            $trimLine = $m[1];
-        } elseif (preg_match('/^##\s+(.*)$/u', $trimLine, $m)) {
-            $type = 'h2';
-            $pFontSize = intval($fontSize * 1.25);
-            $trimLine = $m[1];
-        } elseif (preg_match('/^[-*]\s+(.*)$/u', $trimLine, $m)) {
-            $type = 'list';
-            $trimLine = '・' . $m[1];
-            $indent = intval($pFontSize * 1.0);
-        } elseif (preg_match('/^>\s+(.*)$/u', $trimLine, $m)) {
-            $type = 'quote';
-            $trimLine = $m[1];
-            $indent = intval($pFontSize * 1.5);
-        } elseif (trim($trimLine) === '---') {
-            $type = 'hr';
-            $isHr = true;
-            $trimLine = '';
-        }
-
-        $wrapped = [];
-        if ($isHr) {
-            $wrapped[] = ''; // ダミー行
-        } else {
-            $words = mb_str_split($trimLine, 1);
-            $currentLine = '';
-            $availableWidth = TARGET_WIDTH - TEXT_PADDING * 2;
-            
-            foreach ($words as $char) {
-                $testLine = $currentLine . $char;
-                $bbox = @imagettfbbox($pFontSize, 0, $fontPath, $testLine);
-                if ($bbox === false) {
-                    return [
-                        'success' => false,
-                        'error' => 'フォントの読み込みまたはテキストサイズ計算に失敗しました。フォントファイルが破損している可能性があります。'
-                    ];
-                }
-                $textWidth = $bbox[2] - $bbox[0];
-                
-                $currentIndent = ($type === 'quote') ? $indent : ((count($wrapped) > 0 && $type === 'list') ? $indent : 0);
-                $currentAvailable = $availableWidth - $currentIndent;
-                
-                if ($textWidth > $currentAvailable) {
-                    if ($currentLine !== '') {
-                        $wrapped[] = $currentLine;
-                    }
-                    $currentLine = $char;
-                } else {
-                    $currentLine = $testLine;
-                }
-            }
-            if ($currentLine !== '') {
-                $wrapped[] = $currentLine;
-            }
-        }
-        
-        $paragraphs[] = [
-            'type' => $type,
-            'lines' => $wrapped,
-            'font_size' => $pFontSize,
-            'indent' => $indent
-        ];
-    }
-    
-    // 必要な高さを計算
-    $currentY = $textY;
-    foreach ($paragraphs as $pIndex => $pData) {
-        $type = $pData['type'];
-        $pFontSize = $pData['font_size'];
-        $wrapped = $pData['lines'];
-        
-        $currentY += $pFontSize; // 行の上部余白
-        
-        if ($type === 'hr') {
-            $currentY += $pFontSize;
-            continue;
-        }
-        
-        $scale = $pFontSize / $fontSize;
-        $pLineHeight = intval($lineHeight * $scale);
-        $pWrapLineHeight = intval($wrapLineHeight * $scale);
-        
-        foreach ($wrapped as $lIndex => $line) {
-            if ($lIndex < count($wrapped) - 1) {
-                $currentY += $pWrapLineHeight;
-            } else {
-                $currentY += $pLineHeight;
-            }
-        }
-        
-        if ($type === 'h1') {
-            $currentY += intval($pFontSize * 0.5);
-        }
-    }
-    
-    $requiredHeight = $currentY + TEXT_PADDING;
-    
-    if ($heightMode === 'manual' && $manualHeight > 0) {
-        $bodyHeight = min($manualHeight, MAX_IMAGE_HEIGHT);
-    } else {
-        $bodyHeight = min(max($newHeight, $requiredHeight), MAX_IMAGE_HEIGHT);
-    }
-    
-    $finalHeight = $bodyHeight + $headerHeight;
-    
-    // 最終画像作成
-    $finalImage = imagecreatetruecolor($newWidth, $finalHeight);
-    imagealphablending($finalImage, false);
-    imagesavealpha($finalImage, true);
-    
-    // 1. ヘッダ画像をコピー
-    if ($resizedHeaderImage) {
-        imagecopy($finalImage, $resizedHeaderImage, 0, 0, 0, 0, TARGET_WIDTH, $headerHeight);
-        imagedestroy($resizedHeaderImage);
-    }
-    
-    // 2. 本文背景画像をタイル状に配置
-    for ($y = $headerHeight; $y < $finalHeight; $y += $newHeight) {
-        $copyHeight = min($newHeight, $finalHeight - $y);
-        imagecopy($finalImage, $resizedImage, 0, $y, 0, 0, $newWidth, $copyHeight);
-    }
-    
-    imagedestroy($resizedImage);
-    
-    // テキスト描画用アルファブレンドの有効化
-    imagealphablending($finalImage, true);
-
-    // 1. ヘッダテキストの描画 (上下中央に自動配置)
-    if ($headerEnabled && !empty($headerText)) {
-        $hFontPath = getFontPath($headerFontParam, $headerCustomFontFile);
-        if (!empty($hFontPath) && file_exists($hFontPath)) {
-            $hRgb = hexToRgb($headerTextColor);
-            $hColor = imagecolorallocate($finalImage, $hRgb[0], $hRgb[1], $hRgb[2]);
-            
-            $hOutlineColorRgb = hexToRgb($headerOutlineColor);
-            $hOutlineColorObj = imagecolorallocate($finalImage, $hOutlineColorRgb[0], $hOutlineColorRgb[1], $hOutlineColorRgb[2]);
-            
-            // テキスト範囲の計算
-            $hBbox = @imagettfbbox($headerFontSize, 0, $hFontPath, $headerText);
-            if ($hBbox !== false) {
-                $hTextWidth = $hBbox[2] - $hBbox[0];
-                
-                // 水平X座標の決定
-                switch ($headerTextAlign) {
-                    case 'center':
-                        $hDrawX = (TARGET_WIDTH - $hTextWidth) / 2;
-                        break;
-                    case 'right':
-                        $hDrawX = TARGET_WIDTH - $hTextWidth - TEXT_PADDING;
-                        break;
-                    default: // left
-                        $hDrawX = TEXT_PADDING;
-                        break;
-                }
-                
-                // 垂直上下中央Y座標の計算
-                $hTextHeight = $hBbox[1] - $hBbox[7];
-                $hDrawY = ($headerHeight - $hTextHeight) / 2 - $hBbox[7];
-                
-                // 縁取り描画
-                if ($headerOutlineEnabled) {
-                    for ($ox = -$headerOutlineWidth; $ox <= $headerOutlineWidth; $ox++) {
-                        for ($oy = -$headerOutlineWidth; $oy <= $headerOutlineWidth; $oy++) {
-                            if ($ox != 0 || $oy != 0) {
-                                @imagettftext($finalImage, $headerFontSize, 0, $hDrawX + $ox, $hDrawY + $oy, $hOutlineColorObj, $hFontPath, $headerText);
-                            }
-                        }
-                    }
-                }
-                
-                // テキスト描画
-                @imagettftext($finalImage, $headerFontSize, 0, $hDrawX, $hDrawY, $hColor, $hFontPath, $headerText);
-            }
-        }
-    }
-
-    // 2. 本文テキストの描画
-    if (!empty($text)) {
-        $rgb = hexToRgb($textColor);
-        $color = imagecolorallocate($finalImage, $rgb[0], $rgb[1], $rgb[2]);
-        
-        $outlineColorRgb = hexToRgb($outlineColor);
-        $outlineColorObj = imagecolorallocate($finalImage, $outlineColorRgb[0], $outlineColorRgb[1], $outlineColorRgb[2]);
-        
-        // 引用用の縦線カラー（少し透明にするか、縁取り色に合わせる）
-        $quoteLineColor = imagecolorallocatealpha($finalImage, $outlineColorRgb[0], $outlineColorRgb[1], $outlineColorRgb[2], 50);
-        
-        $currentY = $headerHeight + $textY;
-        
-        foreach ($paragraphs as $pIndex => $pData) {
-            $type = $pData['type'];
-            $pFontSize = $pData['font_size'];
-            $indent = $pData['indent'];
-            $wrapped = $pData['lines'];
-            
-            $currentY += $pFontSize;
-            
-            if ($type === 'hr') {
-                $hrY = $currentY - intval($pFontSize / 2);
-                imagefilledrectangle($finalImage, TEXT_PADDING + 10, $hrY, TARGET_WIDTH - TEXT_PADDING - 10, $hrY + 2, $color);
-                $currentY += $pFontSize;
-                continue;
-            }
-            
-            $scale = $pFontSize / $fontSize;
-            $pLineHeight = intval($lineHeight * $scale);
-            $pWrapLineHeight = intval($wrapLineHeight * $scale);
-            
-            // 引用の縦線描画
-            if ($type === 'quote') {
-                $totalH = 0;
-                foreach ($wrapped as $lIndex => $line) {
-                    $totalH += ($lIndex < count($wrapped) - 1) ? $pWrapLineHeight : 0;
-                }
-                $qStartY = $currentY - $pFontSize;
-                $qEndY = $currentY + $totalH + intval($pFontSize * 0.3);
-                imagefilledrectangle($finalImage, $textX + TEXT_PADDING, $qStartY, $textX + TEXT_PADDING + 4, $qEndY, $quoteLineColor);
-            }
-            
-            foreach ($wrapped as $lIndex => $line) {
-                $bbox = @imagettfbbox($pFontSize, 0, $fontPath, $line);
-                $textWidth = $bbox ? ($bbox[2] - $bbox[0]) : 0;
-                
-                $currentIndent = ($type === 'quote') ? $indent : (($lIndex > 0 && $type === 'list') ? $indent : 0);
-                
-                // 配置計算
-                switch ($textAlign) {
-                    case 'center':
-                        $drawX = ($newWidth - $textWidth) / 2 + ($currentIndent / 2);
-                        break;
-                    case 'right':
-                        $drawX = $newWidth - $textWidth - TEXT_PADDING;
-                        break;
-                    default: // left
-                        $drawX = $textX + TEXT_PADDING + $currentIndent;
-                        break;
-                }
-                
-                // 縁取り描画
-                if ($outlineEnabled) {
-                    for ($ox = -$outlineWidth; $ox <= $outlineWidth; $ox++) {
-                        for ($oy = -$outlineWidth; $oy <= $outlineWidth; $oy++) {
-                            if ($ox != 0 || $oy != 0) {
-                                @imagettftext($finalImage, $pFontSize, 0, $drawX + $ox, $currentY + $oy, $outlineColorObj, $fontPath, $line);
-                            }
-                        }
-                    }
-                }
-                
-                // テキスト描画
-                @imagettftext($finalImage, $pFontSize, 0, $drawX, $currentY, $color, $fontPath, $line);
-                
-                if ($lIndex < count($wrapped) - 1) {
-                    $currentY += $pWrapLineHeight;
-                } else {
-                    $currentY += $pLineHeight;
-                }
-            }
-            
-            if ($type === 'h1') {
-                $currentY += intval($pFontSize * 0.5);
-            }
-        }
-    }
-    
-    // メモリ上でPNGデータを生成して取得
-    ob_start();
-    imagepng($finalImage);
-    $imageData = ob_get_clean();
-    imagedestroy($finalImage);
-    
-    return ['success' => true, 'data' => $imageData];
-}
-
-// ===== ヘルパー関数 =====
-function getFontPath($font, $customFontFile = '') {
-    global $defaultFonts;
-    
-    // 1. アップロードされたフォントファイルの確認
-    if (!empty($customFontFile) && file_exists($customFontFile)) {
-        return $customFontFile;
-    }
-    
-    // 2. デフォルトフォントの探索
-    if (isset($defaultFonts[$font])) {
-        // 定義されたローカルパスを順に探索
-        foreach ($defaultFonts[$font]['paths'] as $path) {
-            if (file_exists($path) && is_file($path)) {
-                return $path;
-            }
-        }
-        
-        // 3. ローカルで見つからない場合、自動ダウンロードを試みる
-        $cachedFont = DIR_FONTS . $defaultFonts[$font]['filename'];
-        if (file_exists($cachedFont) && is_file($cachedFont)) {
-            return $cachedFont;
-        }
-        
-        // ダウンロード処理
-        if (!empty($defaultFonts[$font]['download_url'])) {
-            $url = $defaultFonts[$font]['download_url'];
-            $ctx = stream_context_create([
-                'http' => [
-                    'timeout' => 15,
-                    'follow_location' => true,
-                    'user_agent' => 'TwitchPanelGenerator/1.0',
-                    'ignore_errors' => true
-                ]
-            ]);
-            $fontData = @file_get_contents($url, false, $ctx);
-            
-            $status = 404;
-            if (isset($http_response_header) && is_array($http_response_header)) {
-                foreach ($http_response_header as $header) {
-                    if (preg_match('#^HTTP/[0-9\.]+\s+([0-9]+)#', $header, $match)) {
-                        $status = intval($match[1]);
-                        break;
-                    }
-                }
-            }
-            
-            if ($fontData !== false && $status >= 200 && $status < 300 && strlen($fontData) > 10000) {
-                if (@file_put_contents($cachedFont, $fontData) !== false) {
-                    return $cachedFont;
-                }
-            }
-        }
-    }
-    
-    // 4. 完全にフォントが利用できない場合は、確実に存在する可能性が高いものを返す
-    $noto = DIR_FONTS . 'NotoSansJP-Regular.otf';
-    if (file_exists($noto)) {
-        return $noto;
-    }
-    
-    if (isset($defaultFonts['Meiryo'])) {
-        return $defaultFonts['Meiryo']['paths'][0];
-    }
-    if (isset($defaultFonts['Arial'])) {
-        return $defaultFonts['Arial']['paths'][0];
-    }
-    
-    return '';
-}
-
-function hexToRgb($hex) {
-    $hex = ltrim($hex, '#');
-    return [
-        hexdec(substr($hex, 0, 2)),
-        hexdec(substr($hex, 2, 2)),
-        hexdec(substr($hex, 4, 2))
-    ];
-}
-
 $readmePath = __DIR__ . '/README.md';
 $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'README.md が見つかりません。';
-
 ?>
 <!DOCTYPE html>
 <html lang="ja">
@@ -611,6 +20,9 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Twitch Panel Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@400;700&family=Noto+Sans+JP:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Roboto:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; min-height: 100vh; }
@@ -675,6 +87,8 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
         .github-link { position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.5); padding: 8px 16px; border-radius: 5px; text-decoration: none; font-size: 14px; font-weight: bold; transition: background 0.3s; display: flex; align-items: center; gap: 6px; }
         .github-link:hover { background: rgba(255,255,255,0.4); color: white; text-decoration: none; }
         @media (max-width: 768px) { .github-link { position: static; display: inline-flex; margin-bottom: 15px; } }
+        
+        #markdownHelp code { background: #ffffff; color: #9146ff; padding: 1px 4px; border-radius: 3px; font-family: monospace; font-weight: bold; border: 1px solid #cbd5e1; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -700,216 +114,285 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
             <div>
                 
                 
-                <!-- Header 画像設定 -->
+                <!-- 🖼️ 画像設定 -->
                 <details class="panel" open>
-                    <summary><h2>🖼️ Header 画像設定</h2></summary>
+                    <summary><h2>🖼️ 画像設定</h2></summary>
                     <div class="panel-content">
-<div class="form-group">
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="headerEnabled">
-                            <label for="headerEnabled">ヘッダ画像を有効にする</label>
-                        </div>
-                    </div>
-                    <div id="headerSettingsArea" style="display: none;">
-                        <div class="form-group">
-                            <label>選択中のヘッダ画像</label>
-                            <select id="headerImageSelect">
-                                <option value="">-- まずは画像を追加してください --</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>ヘッダ画像をブラウザに追加</label>
-                            <div class="file-upload">
-                                <input type="file" id="headerImageUpload" accept="image/*">
-                                <button class="btn btn-secondary" onclick="document.getElementById('headerImageUpload').click()">ファイルを選択</button>
-                                <span id="headerImageUploadStatus" style="font-size: 12px; color: #666;"></span>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>ヘッダテキスト</label>
-                            <input type="text" id="headerTextContent" placeholder="ヘッダテキストを入力...">
-                        </div>
-                        <div class="form-group">
-                            <label>フォント</label>
-                            <select id="headerFontSelect">
-                                <option value="Arial">Arial</option>
-                                <option value="Times New Roman">Times New Roman</option>
-                                <option value="Courier New">Courier New</option>
-                                <option value="Verdana">Verdana</option>
-                                <option value="Meiryo">Meiryo (日本語)</option>
-                            </select>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>フォントサイズ (px)</label>
-                                <input type="number" id="headerFontSize" value="24" min="1" max="100">
-                            </div>
-                            <div class="form-group">
-                                <label>配置</label>
-                                <select id="headerTextAlign">
-                                    <option value="center">中央揃え</option>
-                                    <option value="left">左揃え</option>
-                                    <option value="right">右揃え</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>テキスト色</label>
-                                <div class="color-input-group">
-                                    <input type="color" id="headerTextColorPicker" value="#ffffff">
-                                    <input type="text" id="headerTextColor" value="#ffffff" placeholder="#ffffff">
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <!-- 空きスペース -->
-                            </div>
-                        </div>
+                        <!-- ヘッダ画像トグル -->
                         <div class="form-group">
                             <div class="checkbox-group">
-                                <input type="checkbox" id="headerOutlineEnabled">
-                                <label for="headerOutlineEnabled">縁取りを有効にする</label>
+                                <input type="checkbox" id="headerEnabled">
+                                <label for="headerEnabled">ヘッダ画像を有効にする</label>
                             </div>
                         </div>
-                        <div id="headerOutlineSettingsArea" style="display: none;">
+                        <div id="headerImageSettingsArea" style="display: none;">
+                            <div class="form-group">
+                                <label>ヘッダ画像</label>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <select id="headerImageSelect" style="flex: 1; margin-bottom: 0;">
+                                        <option value="">-- まずは画像を追加してください --</option>
+                                    </select>
+                                    <input type="file" id="headerImageUpload" accept="image/*" style="display: none;">
+                                    <button class="btn btn-secondary" style="white-space: nowrap; padding: 10px 15px;" onclick="document.getElementById('headerImageUpload').click()">追加</button>
+                                </div>
+                                <div id="headerImageUploadStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+                            </div>
+                        </div>
+                        
+                        <hr style="margin: 15px 0; border: 0; border-top: 1px dashed rgba(255,255,255,0.15);">
+                        
+                        <!-- 背景画像設定 -->
+                        <div class="form-group">
+                            <label>コンテンツ画像</label>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <select id="imageSelect" style="flex: 1; margin-bottom: 0;">
+                                    <option value="">-- まずは画像を追加してください --</option>
+                                </select>
+                                <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+                                <button class="btn btn-secondary" style="white-space: nowrap; padding: 10px 15px;" onclick="document.getElementById('imageUpload').click()">追加</button>
+                            </div>
+                            <div id="imageUploadStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- 📝 テキスト設定 -->
+                <details class="panel">
+                    <summary><h2>📝 テキスト設定</h2></summary>
+                    <div class="panel-content">
+                        <!-- 共通の装飾・色設定 -->
+                        <div class="form-group" style="margin-bottom: 20px; border-bottom: 1px dashed rgba(255,255,255,0.15); padding-bottom: 15px;">
+                            <label style="display: flex; justify-content: space-between; align-items: flex-end;">
+                                <span style="font-weight: bold; color: #4CAF50;">🎨 共通マークダウン＆部分カラー設定</span>
+                                <span style="font-size: 12px; color: #4CAF50; cursor: pointer;" onclick="document.getElementById('markdownHelp').style.display = document.getElementById('markdownHelp').style.display === 'none' ? 'block' : 'none'">❓マークダウンの書き方</span>
+                            </label>
+                            
+                            <div id="markdownHelp" style="display: none; font-size: 12px; color: #2d3748; margin-bottom: 15px; background: #f7fafc; border: 1px solid #cbd5e1; border-left: 3px solid #4CAF50; padding: 8px; border-radius: 4px; line-height: 1.5;">
+                                行の先頭に特定の記号をつけることで、デザインを自動で変更できます（本文のみ適用）。<br>
+                                <code># テキスト</code> ： <b>見出し1</b>（文字サイズ1.5倍 ＋ 下余白）<br>
+                                <code>## テキスト</code> ： <b>見出し2</b>（文字サイズ1.25倍）<br>
+                                <code>- テキスト</code> ： <b>リスト</b>（先頭が「・」になり、綺麗に字下げ）<br>
+                                <code>> テキスト</code> ： <b>引用</b>（左側にアクセントの縦線 ＋ 全体字下げ）<br>
+                                <code>---</code> ： <b>横線</b>（幅いっぱいに区切り線を引く）<br>
+                                <br>
+                                太字・斜体・下線・部分文字色は文字ごとに適用できます（<b>ヘッダ・本文両対応</b>）。<br>
+                                <code>**テキスト**</code> または <code>__テキスト__</code> ： <b>太字</b><br>
+                                <code>*テキスト*</code> または <code>_テキスト_</code> ： <i>斜体</i><br>
+                                <code>&lt;u&gt;テキスト&lt;/u&gt;</code> または <code>++テキスト++</code> ： <u>下線</u><br>
+                                <br>
+                                部分的な文字色変更も適用できます。<br>
+                                <code>{色名:テキスト}</code> ： <b>プリセット色</b>（例： <code>{赤:重要}</code> 、 <code>{青:https://...}</code> など）<br>
+                                <code>{番号:テキスト}</code> ： <b>カスタム部分色 1〜3</b>（例： <code>{1:カスタム色1の文字}</code> ）<br>
+                                ※ カラー名には 赤、青、黄、緑、紫、オレンジ、ピンク、水色、白、黒 や、直接カラーコード（ <code>{#ff00aa:テキスト}</code> ）も使えます。
+                            </div>
+                            
                             <div class="form-row">
-                                <div class="form-group">
-                                    <label>縁取り色</label>
+                                <div class="form-group" style="margin-bottom: 5px;">
+                                    <label style="font-size: 12px; margin-bottom: 2px;">カスタム部分色1 (マークダウン {1:テキスト})</label>
                                     <div class="color-input-group">
-                                        <input type="color" id="headerOutlineColorPicker" value="#000000">
-                                        <input type="text" id="headerOutlineColor" value="#000000" placeholder="#000000">
+                                        <input type="color" id="customColor1Picker" value="#ff4a4a">
+                                        <input type="text" id="customColor1" value="#ff4a4a" placeholder="#ff4a4a">
+                                    </div>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 5px;">
+                                    <label style="font-size: 12px; margin-bottom: 2px;">カスタム部分色2 (マークダウン {2:テキスト})</label>
+                                    <div class="color-input-group">
+                                        <input type="color" id="customColor2Picker" value="#3b82f6">
+                                        <input type="text" id="customColor2" value="#3b82f6" placeholder="#3b82f6">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-row" style="margin-top: 5px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label style="font-size: 12px; margin-bottom: 2px;">カスタム部分色3 (マークダウン {3:テキスト})</label>
+                                    <div class="color-input-group">
+                                        <input type="color" id="customColor3Picker" value="#fbbf24">
+                                        <input type="text" id="customColor3" value="#fbbf24" placeholder="#fbbf24">
+                                    </div>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <!-- 空き -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ヘッダテキスト設定（有効時のみ表示） -->
+                        <!-- 🔤 表示文字設定（サブアコーディオン） -->
+                        <details style="margin-bottom: 20px; border: 1px solid #e2e8f0; border-radius: 6px; background: #ffffff; padding: 12px;" open>
+                            <summary style="cursor: pointer; font-weight: bold; font-size: 15px; color: #4CAF50; outline: none; user-select: none;">
+                                🔤 表示文字
+                            </summary>
+                            <div style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 10px;">
+                                <!-- ヘッダテキスト（ヘッダ有効時のみ表示） -->
+                                <div id="headerTextInputArea" style="display: none; margin-bottom: 15px;">
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label>ヘッダテキスト</label>
+                                        <input type="text" id="headerTextContent" placeholder="ヘッダテキストを入力...">
+                                    </div>
+                                </div>
+                                <!-- 本文テキスト -->
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label>本文テキスト</label>
+                                    <textarea id="textContent" placeholder="ここにテキストを入力..." style="min-height: 100px;"></textarea>
+                                </div>
+                            </div>
+                        </details>
+
+                        <!-- ヘッダ装飾設定（サブアコーディオン、有効時のみ表示） -->
+                        <details id="headerTextSettingsArea" style="display: none; margin-bottom: 20px; border: 1px solid #e2e8f0; border-radius: 6px; background: #ffffff; padding: 12px;">
+                            <summary style="cursor: pointer; font-weight: bold; font-size: 15px; color: #4CAF50; outline: none; user-select: none;">
+                                🎨 ヘッダ装飾設定
+                            </summary>
+                            <div style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 10px;">
+                                <div class="form-group">
+                                    <label>フォント</label>
+                                    <select id="headerFontSelect">
+                                        <option value="Arial">Arial</option>
+                                        <option value="Times New Roman">Times New Roman</option>
+                                        <option value="Courier New">Courier New</option>
+                                        <option value="Verdana">Verdana</option>
+                                        <option value="Meiryo">Meiryo (日本語)</option>
+                                    </select>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>フォントサイズ (px)</label>
+                                        <input type="number" id="headerFontSize" value="24" min="1" max="100">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>配置</label>
+                                        <select id="headerTextAlign">
+                                            <option value="center">中央揃え</option>
+                                            <option value="left">左揃え</option>
+                                            <option value="right">右揃え</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>テキスト色</label>
+                                        <div class="color-input-group">
+                                            <input type="color" id="headerTextColorPicker" value="#ffffff">
+                                            <input type="text" id="headerTextColor" value="#ffffff" placeholder="#ffffff">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <!-- 空きスペース -->
                                     </div>
                                 </div>
                                 <div class="form-group">
-                                    <label>縁取りの太さ (px)</label>
-                                    <input type="number" id="headerOutlineWidth" value="2" min="1" max="10">
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="headerOutlineEnabled">
+                                        <label for="headerOutlineEnabled">縁取りを有効にする</label>
+                                    </div>
+                                </div>
+                                <div id="headerOutlineSettingsArea" style="display: none;">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>縁取り色</label>
+                                            <div class="color-input-group">
+                                                <input type="color" id="headerOutlineColorPicker" value="#000000">
+                                                <input type="text" id="headerOutlineColor" value="#000000" placeholder="#000000">
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>縁取りの太さ (px)</label>
+                                            <input type="number" id="headerOutlineWidth" value="2" min="1" max="10">
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div></div>
-                </details>
-                <!-- コンテンツ背景画像選択 -->
-                <details class="panel">
-                    <summary><h2>🏞️ コンテンツ背景画像選択</h2></summary>
-                    <div class="panel-content">
-<div class="form-group">
-                        <label>選択中の背景画像</label>
-                        <select id="imageSelect">
-                            <option value="">-- まずは画像を追加してください --</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>背景画像をブラウザに追加</label>
-                        <div class="file-upload">
-                            <input type="file" id="imageUpload" accept="image/*">
-                            <button class="btn btn-secondary" onclick="document.getElementById('imageUpload').click()">ファイルを選択</button>
-                            <span id="imageUploadStatus" style="font-size: 12px; color: #666;"></span>
-                        </div>
-                    </div></div>
-                </details>
-                <!-- 本文テキスト設定 -->
-                <details class="panel">
-                    <summary><h2>📝 本文テキスト設定</h2></summary>
-                    <div class="panel-content">
+                        </details>
 
-<div class="form-group">
-                        <label>本文フォント</label>
-                        <select id="fontSelect">
-                            <option value="Arial">Arial</option>
-                            <option value="Times New Roman">Times New Roman</option>
-                            <option value="Courier New">Courier New</option>
-                            <option value="Verdana">Verdana</option>
-                            <option value="Meiryo">Meiryo (日本語)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>カスタムフォントをブラウザに追加 (.ttf, .otf, .ttc)</label>
-                        <div class="file-upload">
-                            <input type="file" id="fontUpload" accept=".ttf,.otf,.ttc">
-                            <button class="btn btn-secondary" onclick="document.getElementById('fontUpload').click()">ファイルを選択</button>
-                            <span id="fontUploadStatus" style="font-size: 12px; color: #666;"></span>
-                        </div>
-                    
-
-<div class="form-group">
-                        <label style="display: flex; justify-content: space-between; align-items: flex-end;">
-                            テキスト
-                            <span style="font-size: 12px; color: #4CAF50; cursor: pointer;" onclick="document.getElementById('markdownHelp').style.display = document.getElementById('markdownHelp').style.display === 'none' ? 'block' : 'none'">❓マークダウンの書き方</span>
-                        </label>
-                        <div id="markdownHelp" style="display: none; font-size: 12px; color: #ddd; margin-bottom: 8px; background: rgba(0,0,0,0.3); border-left: 3px solid #4CAF50; padding: 8px; border-radius: 4px; line-height: 1.5;">
-                            行の先頭に特定の記号をつけることで、デザインを自動で変更できます。<br>
-                            <code># テキスト</code> ： <b>見出し1</b>（文字サイズ1.5倍 ＋ 下余白）<br>
-                            <code>## テキスト</code> ： <b>見出し2</b>（文字サイズ1.25倍）<br>
-                            <code>- テキスト</code> ： <b>リスト</b>（先頭が「・」になり、綺麗に字下げ）<br>
-                            <code>> テキスト</code> ： <b>引用</b>（左側にアクセントの縦線 ＋ 全体字下げ）<br>
-                            <code>---</code> ： <b>横線</b>（幅いっぱいに区切り線を引く）
-                        </div>
-                        <textarea id="textContent" placeholder="ここにテキストを入力..."></textarea>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>フォントサイズ (px)</label>
-                            <input type="number" id="fontSize" value="20" min="1" max="<?= MAX_FONT_SIZE ?>">
-                        </div>
-                        <div class="form-group">
-                            <!-- 空きスペース -->
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>折り返し行間 (px)</label>
-                            <input type="number" id="wrapLineHeight" value="24" min="1" max="200">
-                        </div>
-                        <div class="form-group">
-                            <label>段落間 (px) ※改行時</label>
-                            <input type="number" id="lineHeight" value="28" min="1" max="200">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>X座標 (px)</label>
-                            <input type="number" id="textX" value="10" min="0" max="<?= TARGET_WIDTH ?>">
-                        </div>
-                        <div class="form-group">
-                            <label>Y座標 (px)</label>
-                            <input type="number" id="textY" value="10" min="0" max="<?= MAX_IMAGE_HEIGHT ?>">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>配置</label>
-                        <select id="textAlign">
-                            <option value="left">左揃え</option>
-                            <option value="center">中央揃え</option>
-                            <option value="right">右揃え</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>テキスト色</label>
-                        <div class="color-input-group">
-                            <input type="color" id="textColorPicker" value="#ffffff">
-                            <input type="text" id="textColor" value="#ffffff" placeholder="#000000">
-                        </div>
-                    
-
-<div class="form-group">
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="outlineEnabled">
-                            <label for="outlineEnabled">縁取りを有効にする</label>
-                        </div>
-                    </div>
-                    <div id="outlineSettingsArea" style="display: none;">
-                        <div class="form-group">
-                            <label>縁取り色</label>
-                            <div class="color-input-group">
-                                <input type="color" id="outlineColorPicker" value="#000000">
-                                <input type="text" id="outlineColor" value="#000000" placeholder="#000000">
+                        <!-- 本文装飾設定（サブアコーディオン） -->
+                        <details style="margin-bottom: 20px; border: 1px solid #e2e8f0; border-radius: 6px; background: #ffffff; padding: 12px;" open>
+                            <summary style="cursor: pointer; font-weight: bold; font-size: 15px; color: #4CAF50; outline: none; user-select: none;">
+                                ⚙️ 本文装飾設定
+                            </summary>
+                            <div style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 10px;">
+                                <div class="form-group">
+                                    <label>本文フォント</label>
+                                    <select id="fontSelect">
+                                        <option value="Arial">Arial</option>
+                                        <option value="Times New Roman">Times New Roman</option>
+                                        <option value="Courier New">Courier New</option>
+                                        <option value="Verdana">Verdana</option>
+                                        <option value="Meiryo">Meiryo (日本語)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>カスタムフォントをブラウザに追加 (.ttf, .otf, .ttc)</label>
+                                    <div class="file-upload">
+                                        <input type="file" id="fontUpload" accept=".ttf,.otf,.ttc">
+                                        <button class="btn btn-secondary" onclick="document.getElementById('fontUpload').click()">ファイルを選択</button>
+                                        <span id="fontUploadStatus" style="font-size: 12px; color: #666;"></span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>フォントサイズ (px)</label>
+                                        <input type="number" id="fontSize" value="20" min="1" max="<?= MAX_FONT_SIZE ?>">
+                                    </div>
+                                    <div class="form-group">
+                                        <!-- 空きスペース -->
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>折り返し行間 (px)</label>
+                                        <input type="number" id="wrapLineHeight" value="24" min="1" max="200">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>段落間 (px) ※改行時</label>
+                                        <input type="number" id="lineHeight" value="28" min="1" max="200">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>X座標 (px)</label>
+                                        <input type="number" id="textX" value="10" min="0" max="<?= TARGET_WIDTH ?>">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Y座標 (px)</label>
+                                        <input type="number" id="textY" value="10" min="0" max="<?= MAX_IMAGE_HEIGHT ?>">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>配置</label>
+                                    <select id="textAlign">
+                                        <option value="left">左揃え</option>
+                                        <option value="center">中央揃え</option>
+                                        <option value="right">右揃え</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>テキスト色</label>
+                                    <div class="color-input-group">
+                                        <input type="color" id="textColorPicker" value="#ffffff">
+                                        <input type="text" id="textColor" value="#ffffff" placeholder="#000000">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <div class="checkbox-group">
+                                        <input type="checkbox" id="outlineEnabled">
+                                        <label for="outlineEnabled">縁取りを有効にする</label>
+                                    </div>
+                                </div>
+                                <div id="outlineSettingsArea" style="display: none;">
+                                    <div class="form-group">
+                                        <label>縁取り色</label>
+                                        <div class="color-input-group">
+                                            <input type="color" id="outlineColorPicker" value="#000000">
+                                            <input type="text" id="outlineColor" value="#000000" placeholder="#000000">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>縁取りの太さ (px)</label>
+                                        <input type="number" id="outlineWidth" value="2" min="1" max="10">
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                        <div class="form-group">
-                            <label>縁取りの太さ (px)</label>
-                            <input type="number" id="outlineWidth" value="2" min="1" max="10">
-                        </div>
-                    </div>
+                        </details>
                     </div>
                 </details>
                 
@@ -955,7 +438,7 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                         <div class="preview-placeholder">プレビューがここに表示されます</div>
                     </div>
                     <div class="button-group">
-                        <button class="btn btn-primary" onclick="updatePreview()">プレビュー更新</button>
+                        <button class="btn btn-secondary" id="toggleFrameBtn" onclick="toggleTextFrame()">枠表示: OFF</button>
                         <button class="btn btn-success" onclick="saveImage()">PNG保存</button>
                     </div>
                 </div>
@@ -1000,6 +483,34 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
             }
         });
         
+        // カスタムカラー1同期
+        document.getElementById('customColor1Picker').addEventListener('input', function() {
+            document.getElementById('customColor1').value = this.value;
+        });
+        document.getElementById('customColor1').addEventListener('input', function() {
+            if (/^#[0-9A-F]{6}$/i.test(this.value)) {
+                document.getElementById('customColor1Picker').value = this.value;
+            }
+        });
+        // カスタムカラー2同期
+        document.getElementById('customColor2Picker').addEventListener('input', function() {
+            document.getElementById('customColor2').value = this.value;
+        });
+        document.getElementById('customColor2').addEventListener('input', function() {
+            if (/^#[0-9A-F]{6}$/i.test(this.value)) {
+                document.getElementById('customColor2Picker').value = this.value;
+            }
+        });
+        // カスタムカラー3同期
+        document.getElementById('customColor3Picker').addEventListener('input', function() {
+            document.getElementById('customColor3').value = this.value;
+        });
+        document.getElementById('customColor3').addEventListener('input', function() {
+            if (/^#[0-9A-F]{6}$/i.test(this.value)) {
+                document.getElementById('customColor3Picker').value = this.value;
+            }
+        });
+        
         document.getElementById('outlineColorPicker').addEventListener('input', function() {
             document.getElementById('outlineColor').value = this.value;
         });
@@ -1016,7 +527,10 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
 
         // ヘッダ設定トグル
         document.getElementById('headerEnabled').addEventListener('change', function() {
-            document.getElementById('headerSettingsArea').style.display = this.checked ? 'block' : 'none';
+            const display = this.checked ? 'block' : 'none';
+            document.getElementById('headerImageSettingsArea').style.display = display;
+            document.getElementById('headerTextSettingsArea').style.display = display;
+            document.getElementById('headerTextInputArea').style.display = display;
         });
         
         // 縁取り設定トグル
@@ -1045,6 +559,591 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
             }
         });
 
+        // ===== PHP定数のJS展開 =====
+        const TEXT_PADDING = <?= TEXT_PADDING ?>;
+        const TARGET_WIDTH = <?= TARGET_WIDTH ?>;
+        const MAX_IMAGE_HEIGHT = <?= MAX_IMAGE_HEIGHT ?>;
+
+        // ===== フォントファミリーのマッピング =====
+        const fontMapping = {
+            'Arial': "'Roboto', sans-serif",
+            'Times New Roman': "'Playfair Display', serif",
+            'Courier New': "'Courier Prime', monospace",
+            'Verdana': "'Inter', sans-serif",
+            'Meiryo': "'Noto Sans JP', sans-serif"
+        };
+
+        const customFontFamilyMap = {};
+        const loadedFontFamilies = new Set();
+        let bodyTextDragArea = { minY: 0, maxY: 0, active: false };
+
+        function loadLocalFont(fileObj) {
+            if (!fileObj) return Promise.resolve();
+            const fontFamilyName = 'custom_' + fileObj.name.replace(/[^a-zA-Z0-9]/g, '_');
+            if (loadedFontFamilies.has(fontFamilyName)) {
+                return Promise.resolve(fontFamilyName);
+            }
+            
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const fontFace = new FontFace(fontFamilyName, e.target.result);
+                    fontFace.load().then(function(loadedFace) {
+                        document.fonts.add(loadedFace);
+                        loadedFontFamilies.add(fontFamilyName);
+                        console.log('Font loaded successfully:', fontFamilyName);
+                        resolve(fontFamilyName);
+                    }).catch(err => {
+                        console.error('FontFace load error:', err);
+                        reject(err);
+                    });
+                };
+                reader.onerror = function(err) {
+                    reject(err);
+                };
+                reader.readAsArrayBuffer(fileObj);
+            });
+        }
+
+        // ===== カラー定数の定義 =====
+        const colorMap = {
+            '赤': '#ff4a4a',
+            'red': '#ff4a4a',
+            '青': '#3b82f6',
+            'blue': '#3b82f6',
+            '緑': '#10b981',
+            'green': '#10b981',
+            '黄': '#fbbf24',
+            'yellow': '#fbbf24',
+            '紫': '#9146ff',
+            'purple': '#9146ff',
+            '橙': '#f97316',
+            'orange': '#f97316',
+            'ピンク': '#ec4899',
+            'pink': '#ec4899',
+            '水色': '#06b6d4',
+            'cyan': '#06b6d4',
+            '白': '#ffffff',
+            'white': '#ffffff',
+            '黒': '#000000',
+            'black': '#000000'
+        };
+
+        function getStyleColor(key) {
+            const trimmedKey = key.trim().toLowerCase();
+            if (trimmedKey === '1') return document.getElementById('customColor1').value;
+            if (trimmedKey === '2') return document.getElementById('customColor2').value;
+            if (trimmedKey === '3') return document.getElementById('customColor3').value;
+            if (colorMap[trimmedKey]) return colorMap[trimmedKey];
+            if (colorMap[key.trim()]) return colorMap[key.trim()];
+            if (/^#[0-9a-fA-F]{3,8}$/.test(trimmedKey)) return key.trim();
+            return key.trim();
+        }
+
+        // ===== インラインMarkdown解析ロジック =====
+        function parseInlineStyles(text) {
+            const chars = [];
+            let isBold = false;
+            let isItalic = false;
+            let isUnderline = false;
+            let i = 0;
+            let colorStack = [];
+            
+            while (i < text.length) {
+                const four = text.substr(i, 4);
+                const three = text.substr(i, 3);
+                const two = text.substr(i, 2);
+                const one = text[i];
+                
+                // <u> タグの処理
+                if (three.toLowerCase() === '<u>') {
+                    isUnderline = true;
+                    i += 3;
+                    continue;
+                } else if (four.toLowerCase() === '</u>') {
+                    isUnderline = false;
+                    i += 4;
+                    continue;
+                }
+                
+                // ++ 記法の処理
+                if (two === '++') {
+                    isUnderline = !isUnderline;
+                    i += 2;
+                    continue;
+                }
+                
+                if (two === '**' || two === '__') {
+                    isBold = !isBold;
+                    i += 2;
+                    continue;
+                } else if (one === '*' || one === '_') {
+                    isItalic = !isItalic;
+                    i++;
+                    continue;
+                }
+                
+                if (one === '{') {
+                    let closeIdx = text.indexOf('}', i);
+                    if (closeIdx !== -1) {
+                        let inner = text.substring(i + 1, closeIdx);
+                        let colonIdx = inner.indexOf(':');
+                        if (colonIdx !== -1) {
+                            let colorKey = inner.substring(0, colonIdx);
+                            let colorVal = getStyleColor(colorKey);
+                            colorStack.push(colorVal);
+                            i += 1 + colonIdx + 1;
+                            continue;
+                        }
+                    }
+                }
+                
+                if (one === '}' && colorStack.length > 0) {
+                    colorStack.pop();
+                    i++;
+                    continue;
+                }
+                
+                const curColor = colorStack.length > 0 ? colorStack[colorStack.length - 1] : null;
+                chars.push({
+                    char: one,
+                    bold: isBold,
+                    italic: isItalic,
+                    underline: isUnderline,
+                    color: curColor
+                });
+                i++;
+            }
+            return chars;
+        }
+
+        // ===== 画像非同期ロードヘルパー =====
+        function loadImage(fileObj) {
+            return new Promise((resolve, reject) => {
+                if (!fileObj) {
+                    resolve(null);
+                    return;
+                }
+                const img = new Image();
+                const url = URL.createObjectURL(fileObj);
+                img.onload = function() {
+                    URL.revokeObjectURL(url);
+                    resolve(img);
+                };
+                img.onerror = function(err) {
+                    URL.revokeObjectURL(url);
+                    reject(err);
+                };
+                img.src = url;
+            });
+        }
+
+        // ===== カラー変換ヘルパー =====
+        function hexToRgba(hex, alpha) {
+            hex = hex.replace('#', '');
+            if (hex.length === 3) {
+                hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+            }
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+
+        // ===== Canvas合成描画の主処理 =====
+        async function drawCanvas(showFrame = false) {
+            const text = document.getElementById('textContent').value;
+            const fontSize = parseInt(document.getElementById('fontSize').value) || 20;
+            const lineHeight = parseInt(document.getElementById('lineHeight').value) || Math.round(fontSize * 1.4);
+            const wrapLineHeight = parseInt(document.getElementById('wrapLineHeight').value) || Math.round(fontSize * 1.2);
+            const textX = parseInt(document.getElementById('textX').value) || 0;
+            const textY = parseInt(document.getElementById('textY').value) || 0;
+            const textColor = document.getElementById('textColor').value || '#ffffff';
+            const textAlign = document.getElementById('textAlign').value || 'left';
+            const outlineEnabled = document.getElementById('outlineEnabled').checked;
+            const outlineColor = document.getElementById('outlineColor').value || '#000000';
+            const outlineWidth = parseInt(document.getElementById('outlineWidth').value) || 2;
+            const heightMode = document.getElementById('heightMode').value || 'auto';
+            const manualHeight = parseInt(document.getElementById('manualHeight').value) || 500;
+            
+            // ヘッダ設定パラメータ
+            const headerEnabled = document.getElementById('headerEnabled').checked;
+            const headerText = document.getElementById('headerTextContent').value || '';
+            const headerFontSize = parseInt(document.getElementById('headerFontSize').value) || 24;
+            const headerTextAlign = document.getElementById('headerTextAlign').value || 'center';
+            const headerTextColor = document.getElementById('headerTextColor').value || '#ffffff';
+            const headerOutlineEnabled = document.getElementById('headerOutlineEnabled').checked;
+            const headerOutlineColor = document.getElementById('headerOutlineColor').value || '#000000';
+            const headerOutlineWidth = parseInt(document.getElementById('headerOutlineWidth').value) || 2;
+
+            // フォントの特定
+            const fontSelectVal = document.getElementById('fontSelect').value;
+            const fontFamily = customFontFamilyMap[fontSelectVal] || fontMapping[fontSelectVal] || 'sans-serif';
+            
+            const headerFontSelectVal = document.getElementById('headerFontSelect').value;
+            const headerFontFamily = customFontFamilyMap[headerFontSelectVal] || fontMapping[headerFontSelectVal] || 'sans-serif';
+
+            // 画像のロード
+            const bgVal = document.getElementById('imageSelect').value;
+            const bgFile = localFiles.bgImages[bgVal];
+            if (!bgFile) {
+                throw new Error('背景画像が選択されていません。');
+            }
+            const bgImg = await loadImage(bgFile);
+            
+            let headerImg = null;
+            if (headerEnabled) {
+                const headerVal = document.getElementById('headerImageSelect').value;
+                const headerFile = localFiles.headerImages[headerVal];
+                if (headerFile) {
+                    headerImg = await loadImage(headerFile);
+                }
+            }
+
+            // フォント準備の完了を待機
+            await document.fonts.ready;
+
+            // サイズ計算
+            const targetWidth = TARGET_WIDTH;
+            const bgOrigWidth = bgImg.width;
+            const bgOrigHeight = bgImg.height;
+            const bgResizedHeight = Math.round(bgOrigHeight * (targetWidth / bgOrigWidth));
+            
+            let headerHeight = 0;
+            if (headerEnabled && headerImg) {
+                const hOrigWidth = headerImg.width;
+                const hOrigHeight = headerImg.height;
+                headerHeight = Math.round(hOrigHeight * (targetWidth / hOrigWidth));
+            }
+
+            // レイアウト・折り返し計算用の一時Canvas
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = targetWidth;
+            
+            let textBoundingBox = {
+                minX: targetWidth,
+                maxX: 0,
+                minY: textY + headerHeight,
+                maxY: 0
+            };
+            
+            const lines = text.split('\n');
+            const paragraphs = [];
+            const availableWidth = Math.max(50, targetWidth - (textX * 2) - TEXT_PADDING * 2);
+            
+            for (const rawLine of lines) {
+                let type = 'normal';
+                let pFontSize = fontSize;
+                let indent = 0;
+                let isHr = false;
+                
+                const trimLine = rawLine.trimEnd();
+                let processText = trimLine;
+                
+                if (/^#\s+(.*)$/u.test(trimLine)) {
+                    type = 'h1';
+                    pFontSize = Math.round(fontSize * 1.5);
+                    processText = trimLine.match(/^#\s+(.*)$/u)[1];
+                } else if (/^##\s+(.*)$/u.test(trimLine)) {
+                    type = 'h2';
+                    pFontSize = Math.round(fontSize * 1.25);
+                    processText = trimLine.match(/^##\s+(.*)$/u)[1];
+                } else if (/^[-*]\s+(.*)$/u.test(trimLine)) {
+                    type = 'list';
+                    pFontSize = fontSize;
+                    processText = '・' + trimLine.match(/^[-*]\s+(.*)$/u)[1];
+                    indent = pFontSize * 1.0;
+                } else if (/^>\s+(.*)$/u.test(trimLine)) {
+                    type = 'quote';
+                    pFontSize = fontSize;
+                    processText = trimLine.match(/^>\s+(.*)$/u)[1];
+                    indent = pFontSize * 1.5;
+                } else if (trimLine.trim() === '---') {
+                    type = 'hr';
+                    isHr = true;
+                    processText = '';
+                }
+
+                // インラインスタイルのパース
+                const charTokens = parseInlineStyles(processText);
+                const wrappedLines = [];
+                
+                if (isHr) {
+                    wrappedLines.push([]); // 空行
+                } else {
+                    let currentLine = [];
+                    let currentWidth = 0;
+                    
+                    for (const token of charTokens) {
+                        const fontStyle = token.italic ? 'italic' : '';
+                        const fontWeight = token.bold ? 'bold' : '';
+                        ctx.font = `${fontStyle} ${fontWeight} ${pFontSize}px ${fontFamily}`.trim().replace(/\s+/g, ' ');
+                        const charWidth = ctx.measureText(token.char).width;
+                        
+                        const currentIndent = (type === 'quote') ? indent : ((wrappedLines.length > 0 && type === 'list') ? indent : 0);
+                        const maxAvailable = availableWidth - currentIndent;
+                        
+                        if (currentWidth + charWidth > maxAvailable && currentLine.length > 0) {
+                            wrappedLines.push(currentLine);
+                            currentLine = [token];
+                            currentWidth = charWidth;
+                        } else {
+                            currentLine.push(token);
+                            currentWidth += charWidth;
+                        }
+                    }
+                    if (currentLine.length > 0) {
+                        wrappedLines.push(currentLine);
+                    }
+                }
+                
+                paragraphs.push({
+                    type: type,
+                    wrappedLines: wrappedLines,
+                    fontSize: pFontSize,
+                    indent: indent
+                });
+            }
+
+            // Y座標と全高の算出
+            let currentY = textY;
+            const paragraphDrawData = [];
+            
+            for (const p of paragraphs) {
+                const pFontSize = p.fontSize;
+                const wrapped = p.wrappedLines;
+                
+                currentY += pFontSize;
+                
+                if (p.type === 'hr') {
+                    paragraphDrawData.push({
+                        type: 'hr',
+                        y: currentY - Math.round(pFontSize / 2),
+                        height: pFontSize
+                    });
+                    currentY += pFontSize;
+                    continue;
+                }
+                
+                const scale = pFontSize / fontSize;
+                const pLineHeight = Math.round(lineHeight * scale);
+                const pWrapLineHeight = Math.round(wrapLineHeight * scale);
+                
+                const linesData = [];
+                const startY = currentY - pFontSize;
+                
+                for (let i = 0; i < wrapped.length; i++) {
+                    const line = wrapped[i];
+                    const lineY = currentY;
+                    linesData.push({
+                        tokens: line,
+                        y: lineY
+                    });
+                    
+                    if (i < wrapped.length - 1) {
+                        currentY += pWrapLineHeight;
+                    } else {
+                        currentY += pLineHeight;
+                    }
+                }
+                
+                if (p.type === 'h1') {
+                    currentY += Math.round(pFontSize * 0.5);
+                }
+                const endY = currentY - pLineHeight + Math.round(pFontSize * 0.3);
+                
+                paragraphDrawData.push({
+                    type: p.type,
+                    lines: linesData,
+                    fontSize: pFontSize,
+                    indent: p.indent,
+                    startY: startY,
+                    endY: endY
+                });
+            }
+
+            const requiredHeight = currentY + TEXT_PADDING;
+            
+            // 本文テキストのドラッグ可能エリアを更新（ヘッダ高さを考慮した絶対座標）
+            bodyTextDragArea.minY = textY + headerHeight;
+            bodyTextDragArea.maxY = requiredHeight + headerHeight;
+            bodyTextDragArea.active = (text.trim().length > 0);
+            
+            textBoundingBox.maxY = requiredHeight + headerHeight;
+            
+            let bodyHeight = 0;
+            if (heightMode === 'manual' && manualHeight > 0) {
+                bodyHeight = Math.min(manualHeight, MAX_IMAGE_HEIGHT);
+            } else {
+                bodyHeight = Math.min(Math.max(bgResizedHeight, requiredHeight), MAX_IMAGE_HEIGHT);
+            }
+            
+            const finalHeight = bodyHeight + headerHeight;
+            canvas.height = finalHeight;
+
+            // 描画実行
+            // 1. ヘッダ画像
+            if (headerEnabled && headerImg) {
+                ctx.drawImage(headerImg, 0, 0, targetWidth, headerHeight);
+            }
+
+            // 2. 本文背景画像タイル
+            for (let y = headerHeight; y < finalHeight; y += bgResizedHeight) {
+                const copyHeight = Math.min(bgResizedHeight, finalHeight - y);
+                ctx.drawImage(bgImg, 0, 0, bgOrigWidth, Math.round(bgOrigHeight * (copyHeight / bgResizedHeight)), 
+                              0, y, targetWidth, copyHeight);
+            }
+
+            // 3. ヘッダテキストの描画
+            if (headerEnabled && headerText) {
+                const hTokens = parseInlineStyles(headerText);
+                
+                // 全体の幅を測定
+                let hTextWidth = 0;
+                hTokens.forEach(t => {
+                    const tBold = t.bold || headerOutlineEnabled;
+                    const fontStyle = `${t.italic ? 'italic' : ''} ${tBold ? 'bold' : 'normal'} ${headerFontSize}px ${headerFontFamily}`.trim().replace(/\s+/g, ' ');
+                    ctx.font = fontStyle;
+                    hTextWidth += ctx.measureText(t.char).width;
+                });
+                
+                ctx.textBaseline = 'alphabetic';
+                
+                let hDrawX = TEXT_PADDING;
+                if (headerTextAlign === 'center') {
+                    hDrawX = (targetWidth - hTextWidth) / 2;
+                } else if (headerTextAlign === 'right') {
+                    hDrawX = targetWidth - hTextWidth - TEXT_PADDING;
+                }
+                
+                const hDrawY = Math.round((headerHeight + headerFontSize * 0.8) / 2);
+                
+                let currentX = hDrawX;
+                hTokens.forEach(t => {
+                    const tBold = t.bold || headerOutlineEnabled;
+                    const fontStyle = `${t.italic ? 'italic' : ''} ${tBold ? 'bold' : 'normal'} ${headerFontSize}px ${headerFontFamily}`.trim().replace(/\s+/g, ' ');
+                    ctx.font = fontStyle;
+                    const charWidth = ctx.measureText(t.char).width;
+                    
+                    if (headerOutlineEnabled) {
+                        ctx.lineWidth = headerOutlineWidth;
+                        ctx.strokeStyle = headerOutlineColor;
+                        ctx.lineJoin = 'round';
+                        ctx.miterLimit = 2;
+                        ctx.strokeText(t.char, currentX, hDrawY);
+                    }
+                    
+                    ctx.fillStyle = t.color ? t.color : headerTextColor;
+                    ctx.fillText(t.char, currentX, hDrawY);
+                    
+                    if (t.underline) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = ctx.fillStyle;
+                        ctx.lineWidth = Math.max(1, Math.round(headerFontSize / 15));
+                        const lineY = hDrawY + Math.round(headerFontSize * 0.1);
+                        ctx.moveTo(currentX, lineY);
+                        ctx.lineTo(currentX + charWidth, lineY);
+                        ctx.stroke();
+                    }
+                    
+                    currentX += charWidth;
+                });
+            }
+
+            // 4. 本文テキストの描画
+            ctx.textBaseline = 'alphabetic';
+            
+            for (const p of paragraphDrawData) {
+                if (p.type === 'hr') {
+                    ctx.fillStyle = textColor;
+                    ctx.fillRect(TEXT_PADDING + 10, p.y + headerHeight, targetWidth - TEXT_PADDING * 2 - 20, 2);
+                    continue;
+                }
+                
+                if (p.type === 'quote') {
+                    ctx.fillStyle = hexToRgba(outlineColor, 0.4);
+                    ctx.fillRect(textX + TEXT_PADDING, p.startY + headerHeight, 4, p.endY - p.startY);
+                }
+
+                for (let i = 0; i < p.lines.length; i++) {
+                    const line = p.lines[i];
+                    const tokens = line.tokens;
+                    
+                    let totalLineWidth = 0;
+                    for (const token of tokens) {
+                        const fontStyle = token.italic ? 'italic' : '';
+                        const fontWeight = token.bold ? 'bold' : '';
+                        ctx.font = `${fontStyle} ${fontWeight} ${p.fontSize}px ${fontFamily}`.trim().replace(/\s+/g, ' ');
+                        totalLineWidth += ctx.measureText(token.char).width;
+                    }
+                    
+                    const currentIndent = (p.type === 'quote') ? p.indent : ((i > 0 && p.type === 'list') ? p.indent : 0);
+                    
+                    let drawX = textX + TEXT_PADDING + currentIndent;
+                    if (textAlign === 'center') {
+                        drawX = (targetWidth - totalLineWidth) / 2 + (currentIndent / 2);
+                    } else if (textAlign === 'right') {
+                        drawX = targetWidth - totalLineWidth - TEXT_PADDING;
+                    }
+
+                    if (totalLineWidth > 0) {
+                        if (drawX < textBoundingBox.minX) textBoundingBox.minX = drawX;
+                        if (drawX + totalLineWidth > textBoundingBox.maxX) textBoundingBox.maxX = drawX + totalLineWidth;
+                    }
+
+                    for (const token of tokens) {
+                        const fontStyle = token.italic ? 'italic' : '';
+                        const fontWeight = token.bold ? 'bold' : '';
+                        ctx.font = `${fontStyle} ${fontWeight} ${p.fontSize}px ${fontFamily}`.trim().replace(/\s+/g, ' ');
+                        const charWidth = ctx.measureText(token.char).width;
+                        
+                        if (outlineEnabled) {
+                            ctx.lineWidth = outlineWidth;
+                            ctx.strokeStyle = outlineColor;
+                            ctx.lineJoin = 'round';
+                            ctx.miterLimit = 2;
+                            ctx.strokeText(token.char, drawX, line.y + headerHeight);
+                        }
+                        
+                        ctx.fillStyle = token.color || textColor;
+                        ctx.fillText(token.char, drawX, line.y + headerHeight);
+                        
+                        if (token.underline) {
+                            ctx.beginPath();
+                            ctx.strokeStyle = ctx.fillStyle;
+                            ctx.lineWidth = Math.max(1, Math.round(p.fontSize / 15));
+                            const lineY = line.y + headerHeight + Math.round(p.fontSize * 0.1);
+                            ctx.moveTo(drawX, lineY);
+                            ctx.lineTo(drawX + charWidth, lineY);
+                            ctx.stroke();
+                        }
+                        
+                        drawX += charWidth;
+                    }
+                }
+            }
+
+            // 5. 枠線の描画 (showFrameが真のときのみ)
+            if (showFrame && bodyTextDragArea.active && textBoundingBox.maxX > textBoundingBox.minX) {
+                ctx.save();
+                ctx.strokeStyle = '#9146ff'; // Twitch風の紫
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 4]); // 点線
+                
+                const pad = 2; // 少し外側に余白
+                const x = Math.max(0, textBoundingBox.minX - pad);
+                const y = Math.max(headerHeight, textBoundingBox.minY - pad);
+                const w = Math.min(targetWidth - x, (textBoundingBox.maxX - textBoundingBox.minX) + pad * 2);
+                const h = Math.min(finalHeight - y, (textBoundingBox.maxY - textBoundingBox.minY) + pad * 2);
+                
+                ctx.strokeRect(x, y, w, h);
+                ctx.restore();
+            }
+
+            return canvas;
+        }
+
         // ===== ブラウザ内ファイルメモリ =====
         const localFiles = {
             bgImages: {},
@@ -1055,8 +1154,6 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
 
         function addFileToSelect(fileObj, selectId, fileMap, statusId) {
             if (!fileObj) return;
-            const fileId = 'file_' + fileCounter++;
-            fileMap[fileId] = fileObj;
             
             const select = document.getElementById(selectId);
             
@@ -1067,100 +1164,88 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                 }
             }
             
-            const option = document.createElement('option');
-            option.value = fileId;
-            option.textContent = fileObj.name;
-            select.appendChild(option);
-            select.value = fileId;
+            // 重複追加を防ぐ
+            let option = Array.from(select.options).find(o => o.textContent === fileObj.name);
+            let fileId;
+            if (!option) {
+                fileId = 'file_' + fileCounter++;
+                fileMap[fileId] = fileObj;
+                option = document.createElement('option');
+                option.value = fileId;
+                option.textContent = fileObj.name;
+                select.appendChild(option);
+            } else {
+                fileId = option.value;
+                fileMap[fileId] = fileObj;
+            }
             
+            select.value = fileId;
             document.getElementById(statusId).textContent = '✓ 追加しました: ' + fileObj.name;
+            return fileId;
         }
 
         document.getElementById('imageUpload').addEventListener('change', function() {
             addFileToSelect(this.files[0], 'imageSelect', localFiles.bgImages, 'imageUploadStatus');
+            updatePreview();
         });
         document.getElementById('headerImageUpload').addEventListener('change', function() {
             addFileToSelect(this.files[0], 'headerImageSelect', localFiles.headerImages, 'headerImageUploadStatus');
+            updatePreview();
         });
         document.getElementById('fontUpload').addEventListener('change', function() {
             const f = this.files[0];
-            addFileToSelect(f, 'fontSelect', localFiles.fonts, 'fontUploadStatus');
-            addFileToSelect(f, 'headerFontSelect', localFiles.fonts, 'fontUploadStatus');
+            if (!f) return;
+            const fileId = addFileToSelect(f, 'fontSelect', localFiles.fonts, 'fontUploadStatus');
+            
+            const headerSelect = document.getElementById('headerFontSelect');
+            if (!Array.from(headerSelect.options).some(o => o.textContent === f.name)) {
+                const option = document.createElement('option');
+                option.value = fileId;
+                option.textContent = f.name;
+                headerSelect.appendChild(option);
+            }
+            
+            loadLocalFont(f).then(fontFamilyName => {
+                customFontFamilyMap[fileId] = fontFamilyName;
+                updatePreview();
+            }).catch(err => {
+                alert('フォントのロードに失敗しました: ' + err.message);
+            });
         });
 
-        function appendFileToFormData(formData, formKey, selectId, fileMap) {
-            const val = document.getElementById(selectId).value;
-            if (fileMap[val]) {
-                formData.append(formKey, fileMap[val]);
+        let showTextFrame = false;
+        function toggleTextFrame() {
+            showTextFrame = !showTextFrame;
+            const btn = document.getElementById('toggleFrameBtn');
+            if (btn) {
+                if (showTextFrame) {
+                    btn.textContent = '枠表示: ON';
+                    btn.className = 'btn btn-primary';
+                } else {
+                    btn.textContent = '枠表示: OFF';
+                    btn.className = 'btn btn-secondary';
+                }
             }
-        }
-
-        function buildFormData(actionStr) {
-            const formData = new FormData();
-            formData.append('action', actionStr);
-            
-            // Text and standard fields
-            const fields = [
-                'text', 'font_size', 'line_height', 'wrap_line_height', 'text_x', 'text_y',
-                'text_color', 'text_align', 'outline_color', 'outline_width', 'height_mode', 'manual_height',
-                'header_text', 'header_font_size', 'header_text_align', 'header_text_color',
-                'header_outline_color', 'header_outline_width'
-            ];
-            
-            fields.forEach(f => {
-                let elId = f.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-                // 特殊なIDマッピング
-                if (f === 'text') elId = 'textContent';
-                if (f === 'header_text') elId = 'headerTextContent';
-                
-                const el = document.getElementById(elId);
-                if (el) formData.append(f, el.value);
-            });
-            
-            // Checkboxes
-            formData.append('outline_enabled', document.getElementById('outlineEnabled').checked);
-            formData.append('header_enabled', document.getElementById('headerEnabled').checked);
-            formData.append('header_outline_enabled', document.getElementById('headerOutlineEnabled').checked);
-            
-            // Fonts (can be standard string or file id)
-            formData.append('font', document.getElementById('fontSelect').value);
-            formData.append('header_font', document.getElementById('headerFontSelect').value);
-            
-            // Files from memory
-            appendFileToFormData(formData, 'bg_image', 'imageSelect', localFiles.bgImages);
-            appendFileToFormData(formData, 'header_image', 'headerImageSelect', localFiles.headerImages);
-            appendFileToFormData(formData, 'custom_font', 'fontSelect', localFiles.fonts);
-            appendFileToFormData(formData, 'header_custom_font', 'headerFontSelect', localFiles.fonts);
-            
-            return formData;
+            updatePreview();
         }
 
         function updatePreview() {
             const bgVal = document.getElementById('imageSelect').value;
             if (!bgVal || !localFiles.bgImages[bgVal]) {
-                alert('背景画像を追加・選択してください。');
+                document.getElementById('previewContainer').innerHTML = '<div class="preview-placeholder">背景画像を追加・選択してください。</div>';
                 return;
             }
             
-            const formData = buildFormData('preview');
             document.getElementById('previewContainer').innerHTML = '<div class="preview-placeholder">生成中...</div>';
             
-            fetch('', {
-                method: 'POST',
-                body: formData
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    document.getElementById('previewContainer').innerHTML = 
-                        '<img src="data:image/png;base64,' + data.image + '" alt="Preview">';
-                } else {
-                    document.getElementById('previewContainer').innerHTML = 
-                        '<div class="preview-placeholder">エラー: ' + data.error + '</div>';
-                }
-            })
-            .catch(err => {
-                document.getElementById('previewContainer').innerHTML = '<div class="preview-placeholder">エラーが発生しました。</div>';
+            drawCanvas(showTextFrame).then(canvas => {
+                const dataUrl = canvas.toDataURL('image/png');
+                document.getElementById('previewContainer').innerHTML = 
+                    `<img src="${dataUrl}" alt="Preview">`;
+            }).catch(err => {
+                console.error(err);
+                document.getElementById('previewContainer').innerHTML = 
+                    `<div class="preview-placeholder">エラー: ${err.message}</div>`;
             });
         }
         
@@ -1171,21 +1256,8 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                 return;
             }
             
-            const formData = buildFormData('save');
-            formData.append('filename', document.getElementById('filename').value);
-            
-            fetch('', {
-                method: 'POST',
-                body: formData
-            })
-            .then(res => {
-                const contentType = res.headers.get('content-type');
-                if (contentType && contentType.includes('application/json')) {
-                    return res.json().then(data => {
-                        alert('エラー: ' + data.error);
-                    });
-                }
-                return res.blob().then(blob => {
+            drawCanvas().then(canvas => {
+                canvas.toBlob(blob => {
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
@@ -1195,18 +1267,19 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
                     a.click();
                     window.URL.revokeObjectURL(url);
                     a.remove();
-                });
-            })
-            .catch(err => {
+                }, 'image/png');
+            }).catch(err => {
                 console.error(err);
-                alert('保存中にエラーが発生しました。');
+                alert('保存中にエラーが発生しました: ' + err.message);
             });
         }
 
         // 状態保存処理（※一時ファイルは保存できないため、テキスト等の設定値のみ）
         const SAVE_KEYS = [
             'textContent', 'fontSize', 'lineHeight', 'wrapLineHeight',
-            'textX', 'textY', 'textAlign', 'textColorPicker', 'textColor', 'outlineEnabled',
+            'textX', 'textY', 'textAlign', 'textColorPicker', 'textColor',
+            'customColor1Picker', 'customColor1', 'customColor2Picker', 'customColor2', 'customColor3Picker', 'customColor3',
+            'outlineEnabled',
             'outlineColorPicker', 'outlineColor', 'outlineWidth', 'heightMode', 'manualHeight', 'filename',
             'headerEnabled', 'headerTextContent', 'headerFontSize',
             'headerTextAlign', 'headerTextColorPicker', 'headerTextColor', 'headerOutlineEnabled',
@@ -1348,16 +1421,139 @@ $readmeContent = file_exists($readmePath) ? file_get_contents($readmePath) : 'RE
             };
             reader.readAsText(file);
         }
+        
+        // ===== プレビュー画面上での本文テキストドラッグ移動機能 =====
+        let isDragging = false;
+        let dragStartTextX = 0;
+        let dragStartTextY = 0;
+        let dragStartMouseX = 0;
+        let dragStartMouseY = 0;
+
+        function getCanvasCoords(e, container) {
+            const img = container.querySelector('img');
+            if (!img) return null;
+            const rect = img.getBoundingClientRect();
+            const scaleX = TARGET_WIDTH / rect.width;
+            
+            // アスペクト比から高さを逆算
+            const finalHeight = (rect.height / rect.width) * TARGET_WIDTH;
+            const scaleY = finalHeight / rect.height;
+            
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            const canvasX = (clientX - rect.left) * scaleX;
+            const canvasY = (clientY - rect.top) * scaleY;
+            return { x: canvasX, y: canvasY };
+        }
+
+        function initDragFeature() {
+            const previewContainer = document.getElementById('previewContainer');
+            
+            function handleDragStart(e) {
+                const coords = getCanvasCoords(e, previewContainer);
+                if (!coords) return;
+
+                if (bodyTextDragArea.active && coords.y >= bodyTextDragArea.minY && coords.y <= bodyTextDragArea.maxY) {
+                    isDragging = true;
+                    dragStartTextX = parseInt(document.getElementById('textX').value) || 0;
+                    dragStartTextY = parseInt(document.getElementById('textY').value) || 0;
+                    
+                    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                    dragStartMouseX = clientX;
+                    dragStartMouseY = clientY;
+                    
+                    if (e.cancelable) {
+                        e.preventDefault();
+                    }
+                }
+            }
+
+            function handleDragMove(e) {
+                const img = previewContainer.querySelector('img');
+                if (!img) return;
+
+                if (isDragging) {
+                    const rect = img.getBoundingClientRect();
+                    const scaleX = TARGET_WIDTH / rect.width;
+                    const finalHeight = (rect.height / rect.width) * TARGET_WIDTH;
+                    const scaleY = finalHeight / rect.height;
+
+                    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+                    const deltaCanvasX = (clientX - dragStartMouseX) * scaleX;
+                    const deltaCanvasY = (clientY - dragStartMouseY) * scaleY;
+
+                    let newX = Math.round(dragStartTextX + deltaCanvasX);
+                    let newY = Math.round(dragStartTextY + deltaCanvasY);
+
+                    newX = Math.max(0, Math.min(newX, TARGET_WIDTH));
+                    newY = Math.max(0, Math.min(newY, MAX_IMAGE_HEIGHT));
+
+                    document.getElementById('textX').value = newX;
+                    document.getElementById('textY').value = newY;
+
+                    drawCanvas(showTextFrame).then(canvas => {
+                        img.src = canvas.toDataURL('image/png');
+                    }).catch(err => console.error(err));
+                    
+                    if (e.cancelable) {
+                        e.preventDefault();
+                    }
+                } else {
+                    const coords = getCanvasCoords(e, previewContainer);
+                    if (coords && bodyTextDragArea.active && coords.y >= bodyTextDragArea.minY && coords.y <= bodyTextDragArea.maxY) {
+                        img.style.cursor = 'move';
+                    } else {
+                        img.style.cursor = 'default';
+                    }
+                }
+            }
+
+            function handleDragEnd() {
+                if (isDragging) {
+                    isDragging = false;
+                    saveFormData();
+                    updatePreview();
+                }
+            }
+
+            previewContainer.addEventListener('mousedown', handleDragStart);
+            window.addEventListener('mousemove', handleDragMove);
+            window.addEventListener('mouseup', handleDragEnd);
+
+            previewContainer.addEventListener('touchstart', handleDragStart, { passive: false });
+            window.addEventListener('touchmove', handleDragMove, { passive: false });
+            window.addEventListener('touchend', handleDragEnd);
+        }
 
         window.addEventListener('DOMContentLoaded', () => {
             loadFormData();
             SAVE_KEYS.forEach(key => {
                 const el = document.getElementById(key);
                 if (el) {
-                    el.addEventListener('change', saveFormData);
-                    el.addEventListener('input', saveFormData);
+                    el.addEventListener('change', () => {
+                        saveFormData();
+                        updatePreview();
+                    });
+                    el.addEventListener('input', () => {
+                        saveFormData();
+                        updatePreview();
+                    });
                 }
             });
+            ['imageSelect', 'headerImageSelect', 'fontSelect', 'headerFontSelect'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('change', updatePreview);
+                }
+            });
+            // ドラッグ機能初期化
+            initDragFeature();
+            // 初期描画
+            updatePreview();
         });
     </script>
 </body>
